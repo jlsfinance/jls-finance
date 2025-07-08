@@ -1,0 +1,42 @@
+# ✅ Node modules (don't push to GitHub)
+node_modules/
+
+# ✅ Next.js build output
+.next/
+out/
+
+# ✅ Firebase build, cache, and large files
+.firebase/
+.firebase/**/*
+firebase-debug.log
+firestore-debug.log
+
+# ✅ Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ✅ Misc system files
+.DS_Store
+*.pem
+
+# ✅ TypeScript build info
+*.tsbuildinfo
+next-env.d.ts
+
+# ✅ Vercel deployment info
+.vercel
+
+# ✅ Yarn/PNPM workspaces (optional)
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# ✅ Code coverage
+/coverage
+
+# ✅ Build folders
+/build
