@@ -184,12 +184,14 @@ export default function LoansPage() {
 
         const borrowerInfo = [
             { label: "Full Name", value: customer.name || 'N/A' },
-            { label: "DOB", value: customer.dob || 'N/A' },
-            { label: "Gender", value: customer.gender || 'N/A' },
-            { label: "Marital Status", value: customer.maritalStatus || 'N/A' },
-            { label: "Mobile No.", value: customer.mobile || 'N/A' },
-            { label: "Address", value: customer.address || 'N/A' },
         ];
+        if (customer.dob) borrowerInfo.push({ label: "DOB", value: customer.dob });
+        if (customer.gender) borrowerInfo.push({ label: "Gender", value: customer.gender });
+        if (customer.maritalStatus) borrowerInfo.push({ label: "Marital Status", value: customer.maritalStatus });
+        borrowerInfo.push(
+            { label: "Mobile No.", value: customer.mobile || 'N/A' },
+            { label: "Address", value: customer.address || 'N/A' }
+        );
         
         const kycInfo = [
             { label: "Aadhaar No.", value: customer.aadhaar || 'N/A' },
