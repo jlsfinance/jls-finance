@@ -1,8 +1,12 @@
 
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { auth } from "@/lib/firebase";
+import { signOut } from "firebase/auth";
+
 import {
   SidebarProvider,
   Sidebar,
@@ -38,11 +42,11 @@ import {
   LogOut,
   Banknote,
   ListChecks,
-  ListTodo,
   Receipt,
 } from "lucide-react";
-import { usePathname } from "next/navigation";
+
 import { FloatingActionButton } from "./FloatingActionButton";
+import { useToast } from "@/hooks/use-toast";
 
 const menuItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -61,6 +65,38 @@ const menuItems = [
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { toast } = useToast();
+  const [user, setUser] = useState<{ name: string } | null>(null);
+
+  useEffect(() => {
+    try {
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+            setUser(JSON.parse(storedUser));
+        }
+    } catch(e) {
+        // Silently fail if localStorage is not available or parsing fails
+    }
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      localStorage.removeItem('user');
+      toast({
+          title: "Logged Out",
+          description: "You have been successfully logged out.",
+      });
+      router.push('/login');
+    } catch (error) {
+       toast({
+          variant: "destructive",
+          title: "Logout Failed",
+          description: "An error occurred while logging out.",
+      });
+    }
+  };
 
   return (
     <SidebarProvider>
@@ -96,11 +132,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <SidebarFooter>
            <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton tooltip="Logout" asChild>
-                  <Link href="/login">
-                    <LogOut />
-                    <span>Logout</span>
-                  </Link>
+                <SidebarMenuButton tooltip="Logout" onClick={handleLogout}>
+                  <LogOut />
+                  <span>Logout</span>
                 </SidebarMenuButton>
              </SidebarMenuItem>
            </SidebarMenu>
@@ -120,24 +154,24 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 <Avatar>
                   <AvatarImage
                     src="https://placehold.co/40x40.png"
-                    alt="@user"
+                    alt={user?.name || 'User'}
                     data-ai-hint="user avatar"
                   />
-                  <AvatarFallback>JD</AvatarFallback>
+                  <AvatarFallback>
+                    {user?.name?.split(' ').map(n => n[0]).join('') || 'U'}
+                  </AvatarFallback>
                 </Avatar>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>My Account</DropdownMenuLabel>
+              <DropdownMenuLabel>{user?.name || 'My Account'}</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem>Profile</DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/settings">Settings</Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/login">Logout</Link>
-              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleLogout}>Logout</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </header>
