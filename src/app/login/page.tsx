@@ -13,7 +13,6 @@ import { doc, getDoc } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
@@ -33,8 +32,8 @@ export default function LoginPage() {
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: "",
-      password: "",
+      email: "admin@jls.com",
+      password: "password",
     },
   });
 
@@ -64,11 +63,11 @@ export default function LoginPage() {
 
         // Redirect based on role
         if (userData.role === 'admin') {
-            router.push('/dashboard'); // Or a specific admin dashboard
+            router.push('/dashboard');
         } else if (userData.role === 'agent') {
-            router.push('/dashboard'); // Or a specific agent dashboard
+            router.push('/dashboard');
         } else {
-            router.push('/dashboard'); // Or a specific customer dashboard
+            router.push('/dashboard');
         }
       } else {
         throw new Error("User data not found in Firestore.");
@@ -92,6 +91,11 @@ export default function LoginPage() {
           <CardDescription>Sign in to your account to continue</CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="mb-6 rounded-md border bg-muted/50 p-4 text-sm">
+            <p className="font-bold text-foreground">Admin Credentials for Demo</p>
+            <p className="text-muted-foreground"><strong>Email:</strong> <code className="font-mono text-primary">admin@jls.com</code></p>
+            <p className="text-muted-foreground"><strong>Password:</strong> <code className="font-mono text-primary">password</code></p>
+          </div>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               <FormField
