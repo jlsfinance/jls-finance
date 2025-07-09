@@ -1,15 +1,22 @@
+
 "use client"
 import { useEffect, useState } from "react"
-import { collection, getDocs, query, where } from "firebase/firestore"
+import Link from 'next/link'
+import { collection, getDocs, query, where, orderBy } from "firebase/firestore"
 import { db } from "@/lib/firebase"
+import { useAuth } from "@/context/AuthContext"
+import { useToast } from "@/hooks/use-toast"
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { DollarSign, Users, FileText, CheckCircle, Clock, Loader2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { DollarSign, Users, FileText, CheckCircle, Loader2, ArrowRight } from "lucide-react"
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from "@/components/ui/chart"
 import { Bar, BarChart, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from "recharts"
-import { format, subMonths, getMonth, getYear } from 'date-fns'
+import { format, subMonths } from 'date-fns'
 
+// Admin/Agent Dashboard Components
 const chartConfig = {
   applications: {
     label: "Applications",
@@ -35,7 +42,7 @@ interface Loan {
     date: string;
 }
 
-export default function DashboardPage() {
+function AdminDashboard() {
     const [stats, setStats] = useState<Stats>({
         totalDisbursed: 0,
         activeLoans: 0,
@@ -95,7 +102,7 @@ export default function DashboardPage() {
                 }));
                 setChartData(finalChartData);
 
-                // For simplicity, total collections today is mocked. A real implementation would query a 'collections' collection by date.
+                // For simplicity, total collections today is mocked.
                 const totalCollectionsToday = Math.floor(Math.random() * 200000);
 
                 setStats({ totalDisbursed, activeLoans, totalCustomers, totalCollectionsToday });
@@ -222,4 +229,149 @@ export default function DashboardPage() {
       </div>
     </div>
   )
+}
+
+function CustomerLoanInfo({ userId }: { userId: string }) {
+    const [loans, setLoans] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const { toast } = useToast();
+
+    useEffect(() => {
+        if (!userId) return;
+        const fetchLoans = async () => {
+            setLoading(true);
+            try {
+                const q = query(collection(db, "loans"), where("customerId", "==", userId), orderBy("date", "desc"));
+                const querySnapshot = await getDocs(q);
+                const loansData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setLoans(loansData);
+            } catch (error) {
+                console.error("Error fetching customer loans:", error);
+                toast({
+                    variant: "destructive",
+                    title: "Failed to load your loan data.",
+                });
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchLoans();
+    }, [userId, toast]);
+
+    if (loading) {
+        return (
+            <Card>
+                <CardHeader>
+                    <CardTitle>Your Loan Status</CardTitle>
+                </CardHeader>
+                <CardContent className="flex justify-center items-center h-24">
+                    <Loader2 className="h-8 w-8 animate-spin" />
+                </CardContent>
+            </Card>
+        );
+    }
+
+    if (loans.length === 0) {
+        return null; // Don't show the card if there are no loans
+    }
+    
+    const getStatusBadge = (status: string) => {
+      switch (status) {
+          case 'Approved': return <Badge variant="secondary">{status}</Badge>;
+          case 'Disbursed': return <Badge className="bg-blue-500 text-white hover:bg-blue-500/90">Active</Badge>;
+          case 'Completed': return <Badge className="bg-accent text-accent-foreground">{status}</Badge>;
+          case 'Rejected': return <Badge variant="destructive">{status}</Badge>;
+          default: return <Badge variant="outline">{status}</Badge>;
+      }
+    }
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Your Loan Applications</CardTitle>
+                <CardDescription>Here is a summary of your loan applications with us.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Loan ID</TableHead>
+                            <TableHead>Amount</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead className="text-right">Action</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {loans.map(loan => (
+                            <TableRow key={loan.id}>
+                                <TableCell className="font-medium">{loan.id.slice(0, 8)}...</TableCell>
+                                <TableCell>₹{loan.amount.toLocaleString('en-IN')}</TableCell>
+                                <TableCell>{getStatusBadge(loan.status)}</TableCell>
+                                <TableCell className="text-right">
+                                    <Button asChild variant="outline" size="sm">
+                                        <Link href={`/loans/${loan.id}`}>View Details</Link>
+                                    </Button>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </CardContent>
+        </Card>
+    );
+}
+
+function CustomerDashboard({ user }: { user: any }) {
+    return (
+        <div className="space-y-6">
+            <h1 className="text-3xl font-headline font-semibold">Welcome back, {user.name.split(' ')[0]}!</h1>
+            <p className="text-muted-foreground">Here's your personal financial dashboard.</p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Card className="flex flex-col justify-between">
+                    <CardHeader>
+                        <CardTitle>Apply for a New Loan</CardTitle>
+                        <CardDescription>Need funds? Get a quick and easy loan from us.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                         <Button asChild size="lg" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
+                            <Link href="/loans/new">
+                                Apply Now <ArrowRight className="ml-2 h-4 w-4" />
+                            </Link>
+                        </Button>
+                    </CardContent>
+                </Card>
+                 <Card className="flex flex-col justify-between">
+                    <CardHeader>
+                        <CardTitle>EMI Calculator</CardTitle>
+                        <CardDescription>Plan your finances. Calculate your monthly loan payments.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                         <Button asChild size="lg" variant="secondary" className="w-full">
+                            <Link href="/emi-calculator">
+                                Calculate EMI <ArrowRight className="ml-2 h-4 w-4" />
+                            </Link>
+                        </Button>
+                    </CardContent>
+                </Card>
+            </div>
+            
+            <CustomerLoanInfo userId={user.uid} />
+        </div>
+    );
+}
+
+export default function DashboardPage() {
+    const { user, loading } = useAuth();
+    
+    if (loading || !user) {
+        return <div className="flex justify-center items-center h-full"><Loader2 className="w-10 h-10 animate-spin" /></div>
+    }
+
+    if (user.role === 'customer') {
+        return <CustomerDashboard user={user} />;
+    }
+
+    // Admin or Agent view
+    return <AdminDashboard />;
 }
