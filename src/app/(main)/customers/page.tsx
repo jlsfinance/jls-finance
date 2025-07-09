@@ -13,6 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Search, PlusCircle, Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useToast } from "@/hooks/use-toast";
 
 interface Customer {
   id: string;
@@ -27,6 +28,7 @@ export default function CustomerListPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const { toast } = useToast();
 
   useEffect(() => {
     const fetchCustomers = async () => {
@@ -41,19 +43,24 @@ export default function CustomerListPage() {
         setCustomers(customersData);
       } catch (error) {
         console.error("Error fetching customers: ", error);
+        toast({
+          variant: "destructive",
+          title: "Failed to load customers",
+          description: "Could not fetch customer list from Firestore. Please check your Firestore security rules or for errors in the console.",
+        });
       } finally {
         setLoading(false);
       }
     };
 
     fetchCustomers();
-  }, []);
+  }, [toast]);
   
   const filteredCustomers = useMemo(() => {
     return customers.filter(customer =>
-      customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.mobile.includes(searchTerm) ||
-      customer.id.toLowerCase().includes(searchTerm.toLowerCase())
+      (customer.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (customer.mobile || '').includes(searchTerm) ||
+      (customer.id || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [customers, searchTerm]);
 
@@ -112,7 +119,7 @@ export default function CustomerListPage() {
                             <div className="flex items-center gap-3">
                             <Avatar>
                                 <AvatarImage src={customer.photo_url} alt={customer.name} data-ai-hint="person photo" />
-                                <AvatarFallback>{customer.name.charAt(0)}</AvatarFallback>
+                                <AvatarFallback>{(customer.name || 'C').charAt(0)}</AvatarFallback>
                             </Avatar>
                             <span>{customer.name}</span>
                             </div>
