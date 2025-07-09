@@ -14,7 +14,6 @@ import { useToast } from "@/hooks/use-toast";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { format, parseISO } from 'date-fns';
-import { JLS_LOGO_DATA_URL } from '@/lib/logo';
 
 // Interfaces for type safety
 interface Emi {
@@ -152,20 +151,16 @@ export default function LoanDetailsPage() {
     try {
         const pdfDoc = new jsPDF();
         
-        const headerY = 10;
-        if (JLS_LOGO_DATA_URL) {
-            pdfDoc.addImage(JLS_LOGO_DATA_URL, "PNG", 10, headerY, 30, 30);
-            pdfDoc.setFontSize(16);
-            pdfDoc.setFont("helvetica", "bold");
-            pdfDoc.text("JLS Finance Company", 45, headerY + 15);
-        }
+        pdfDoc.setFontSize(16);
+        pdfDoc.setFont("helvetica", "bold");
+        pdfDoc.text("JLS Finance Company", pdfDoc.internal.pageSize.getWidth() / 2, 15, { align: 'center' });
 
         pdfDoc.setFontSize(14);
         pdfDoc.setFont("helvetica", "normal");
-        pdfDoc.text('Loan Repayment Schedule', pdfDoc.internal.pageSize.getWidth() / 2, headerY + 25, { align: 'center' });
+        pdfDoc.text('Loan Repayment Schedule', pdfDoc.internal.pageSize.getWidth() / 2, 25, { align: 'center' });
         
         pdfDoc.setFontSize(10);
-        let contentStartY = headerY + 40;
+        let contentStartY = 40;
         pdfDoc.text(`Customer: ${loan.customerName}`, 15, contentStartY);
         contentStartY += 7;
         pdfDoc.text(`Loan ID: ${loan.id}`, 15, contentStartY);
@@ -233,12 +228,9 @@ export default function LoanDetailsPage() {
         const headerY = 10;
         let y = headerY;
         
-        if (JLS_LOGO_DATA_URL) {
-            pdfDoc.addImage(JLS_LOGO_DATA_URL, "PNG", 10, headerY, 30, 30);
-            pdfDoc.setFontSize(16);
-            pdfDoc.setFont("helvetica", "bold");
-            pdfDoc.text("JLS Finance Company", 45, headerY + 15);
-        }
+        pdfDoc.setFontSize(16);
+        pdfDoc.setFont("helvetica", "bold");
+        pdfDoc.text("JLS Finance Company", 105, y + 5, { align: 'center' });
         
         // Customer photo with fallback
         if (customerSnap.exists() && customerSnap.data().photo_url) {

@@ -48,7 +48,6 @@ import {
 
 import { FloatingActionButton } from "./FloatingActionButton";
 import { useToast } from "@/hooks/use-toast";
-import { JlsLogo } from "./ui/JlsLogo";
 
 const allMenuItems = [
   // General
@@ -107,7 +106,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             href="/dashboard"
             className="flex items-center gap-2 text-primary font-semibold text-lg"
           >
-            <JlsLogo />
+            <Banknote />
             <span className="font-headline group-data-[collapsible=icon]:hidden">
               JLS Finance
             </span>
