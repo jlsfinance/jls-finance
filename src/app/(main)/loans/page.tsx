@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog"
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { JLS_LOGO_DATA_URL } from '@/lib/logo'
 
 const formatCurrency = (value: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(value);
 
@@ -137,13 +138,17 @@ export default function LoansPage() {
         const contentWidth = rightMargin - leftMargin;
 
         const addHeader = (pageNumber: number) => {
-            pdfDoc.setFont("helvetica", "bold");
-            pdfDoc.setFontSize(18);
-            pdfDoc.text("JLS FINANCE LTD", pageWidth / 2, 15, { align: 'center' });
+            if (JLS_LOGO_DATA_URL) {
+              pdfDoc.addImage(JLS_LOGO_DATA_URL, 'PNG', leftMargin, 15, 10, 10);
+              pdfDoc.setFont("helvetica", "bold");
+              pdfDoc.setFontSize(14);
+              pdfDoc.text("JLS Finance Company", leftMargin + 12, 22);
+            }
+            
             pdfDoc.setFontSize(14);
             let title = "LOAN AGREEMENT";
             if (pageNumber > 1) title += " (continued)";
-            pdfDoc.text(title, pageWidth / 2, 22, { align: 'center' });
+            pdfDoc.text(title, pageWidth / 2, 32, { align: 'center' });
             pdfDoc.setFont("helvetica", "normal");
             pdfDoc.setFontSize(10);
             pdfDoc.text(`Date: ${loan.disbursalDate || new Date().toLocaleDateString('en-GB')}`, rightMargin, 28, { align: 'right' });
@@ -155,7 +160,7 @@ export default function LoansPage() {
 
         // --- PAGE 1 ---
         addHeader(1);
-        let y = 40;
+        let y = 45;
 
         if (customer.photo_url) {
             try {
@@ -201,19 +206,23 @@ export default function LoansPage() {
         
         let leftY = y, rightY = y;
         borrowerInfo.forEach(info => {
-            pdfDoc.setFont(undefined, "bold"); pdfDoc.text(`${info.label}:`, leftColX, leftY);
-            pdfDoc.setFont(undefined, "normal");
-            const valueLines = pdfDoc.splitTextToSize(info.value, rightColX - leftColX - 30);
-            pdfDoc.text(valueLines, leftColX + 35, leftY);
-            leftY += (valueLines.length * 5) + 3;
+            if (info.value && info.value !== 'N/A') {
+                pdfDoc.setFont(undefined, "bold"); pdfDoc.text(`${info.label}:`, leftColX, leftY);
+                pdfDoc.setFont(undefined, "normal");
+                const valueLines = pdfDoc.splitTextToSize(info.value, rightColX - leftColX - 30);
+                pdfDoc.text(valueLines, leftColX + 35, leftY);
+                leftY += (valueLines.length * 5) + 3;
+            }
         });
 
         kycInfo.forEach(info => {
-            pdfDoc.setFont(undefined, "bold"); pdfDoc.text(`${info.label}:`, rightColX, rightY);
-            pdfDoc.setFont(undefined, "normal");
-            const valueLines = pdfDoc.splitTextToSize(info.value, rightMargin - rightColX - 25);
-            pdfDoc.text(valueLines, rightColX + 25, rightY);
-            rightY += (valueLines.length * 5) + 3;
+             if (info.value && info.value !== 'N/A') {
+                pdfDoc.setFont(undefined, "bold"); pdfDoc.text(`${info.label}:`, rightColX, rightY);
+                pdfDoc.setFont(undefined, "normal");
+                const valueLines = pdfDoc.splitTextToSize(info.value, rightMargin - rightColX - 25);
+                pdfDoc.text(valueLines, rightColX + 25, rightY);
+                rightY += (valueLines.length * 5) + 3;
+            }
         });
         
         y = Math.max(leftY, rightY) + 5;
@@ -263,7 +272,7 @@ export default function LoansPage() {
         // --- PAGE 2 ---
         pdfDoc.addPage();
         addHeader(2);
-        y = 40;
+        y = 45;
 
         pdfDoc.setFont(undefined, 'bold'); pdfDoc.text("Terms & Conditions", leftMargin, y); y+=10;
         pdfDoc.setFont(undefined, 'normal');
@@ -340,13 +349,17 @@ export default function LoansPage() {
 
         let y = 15;
         const pageWidth = pdfDoc.internal.pageSize.width;
+        const leftMargin = 15;
+
+        if (JLS_LOGO_DATA_URL) {
+            pdfDoc.addImage(JLS_LOGO_DATA_URL, 'PNG', leftMargin, 15, 10, 10);
+            pdfDoc.setFont("helvetica", "bold");
+            pdfDoc.setFontSize(14);
+            pdfDoc.text("JLS Finance Company", leftMargin + 12, 22);
+        }
         
-        pdfDoc.setFont("helvetica", "bold");
-        pdfDoc.setFontSize(16);
-        pdfDoc.text('JLS FINANCE LTD', pageWidth / 2, y, { align: 'center' });
-        y += 8;
         pdfDoc.setFontSize(12);
-        pdfDoc.text('Loan Summary Card', pageWidth / 2, y, { align: 'center' });
+        pdfDoc.text('Loan Summary Card', pageWidth / 2, 32, { align: 'center' });
         
         if (customer?.photo_url) {
             try {

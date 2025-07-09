@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { useToast } from "@/hooks/use-toast"
+import { JLS_LOGO_DATA_URL } from '@/lib/logo';
 
 interface Receipt {
     id: string;
@@ -74,10 +75,14 @@ export default function ReceiptsClient() {
         const customerSnap = await getDoc(customerRef);
         
         let y = 15;
-        pdfDoc.setFontSize(16);
-        pdfDoc.setFont("helvetica", "bold");
-        pdfDoc.text("JLS FINANCE LTD", 105, y, { align: 'center' });
-        y += 10;
+        const leftMargin = 14;
+
+        if (JLS_LOGO_DATA_URL) {
+            pdfDoc.addImage(JLS_LOGO_DATA_URL, 'PNG', leftMargin, 15, 10, 10);
+            pdfDoc.setFont("helvetica", "bold");
+            pdfDoc.setFontSize(14);
+            pdfDoc.text("JLS Finance Company", leftMargin + 12, 22);
+        }
         
         if (customerSnap.exists() && customerSnap.data().photo_url) {
             try {
@@ -97,6 +102,7 @@ export default function ReceiptsClient() {
             }
         }
 
+        y=35;
         pdfDoc.setFontSize(14);
         pdfDoc.setFont("helvetica", "normal");
         pdfDoc.text("Payment Receipt", 105, y, { align: 'center' });

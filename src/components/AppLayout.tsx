@@ -48,6 +48,7 @@ import {
 
 import { FloatingActionButton } from "./FloatingActionButton";
 import { useToast } from "@/hooks/use-toast";
+import { JlsLogo } from "./ui/JlsLogo";
 
 const allMenuItems = [
   // General
@@ -96,7 +97,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     }
   };
   
-  const menuItems = allMenuItems.filter(item => user && item.roles.includes(user.role));
+  const menuItems = allMenuItems.filter(item => user && item.roles.includes(item.role));
 
   return (
     <SidebarProvider>
@@ -104,10 +105,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <SidebarHeader className="p-4">
           <Link
             href="/dashboard"
-            className="flex items-center text-primary font-semibold text-lg"
+            className="flex items-center gap-2 text-primary font-semibold text-lg"
           >
+            <JlsLogo />
             <span className="font-headline group-data-[collapsible=icon]:hidden">
-              JLS Finance Company
+              JLS Finance
             </span>
           </Link>
         </SidebarHeader>

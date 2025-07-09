@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { format, parseISO } from 'date-fns';
+import { JLS_LOGO_DATA_URL } from '@/lib/logo';
 
 // Interfaces for type safety
 interface Emi {
@@ -150,19 +151,23 @@ export default function LoanDetailsPage() {
     setIsDownloadingSchedule(true);
     try {
         const pdfDoc = new jsPDF();
+        const leftMargin = 15;
 
         // Header
-        pdfDoc.setFontSize(16);
-        pdfDoc.setFont("helvetica", "bold");
-        pdfDoc.text('JLS FINANCE LTD', pdfDoc.internal.pageSize.getWidth() / 2, 15, { align: 'center' });
+        if (JLS_LOGO_DATA_URL) {
+            pdfDoc.addImage(JLS_LOGO_DATA_URL, 'PNG', leftMargin, 15, 10, 10);
+            pdfDoc.setFont("helvetica", "bold");
+            pdfDoc.setFontSize(14);
+            pdfDoc.text("JLS Finance Company", leftMargin + 12, 22);
+        }
 
         pdfDoc.setFontSize(14);
         pdfDoc.setFont("helvetica", "normal");
-        pdfDoc.text('Loan Repayment Schedule', pdfDoc.internal.pageSize.getWidth() / 2, 25, { align: 'center' });
+        pdfDoc.text('Loan Repayment Schedule', pdfDoc.internal.pageSize.getWidth() / 2, 35, { align: 'center' });
         
         pdfDoc.setFontSize(10);
-        pdfDoc.text(`Customer: ${loan.customerName}`, 15, 35);
-        pdfDoc.text(`Loan ID: ${loan.id}`, 15, 42);
+        pdfDoc.text(`Customer: ${loan.customerName}`, 15, 45);
+        pdfDoc.text(`Loan ID: ${loan.id}`, 15, 52);
 
         const tableColumn = ["EMI No.", "Due Date", "Principal", "Interest", "Total EMI", "Balance After", "Paid Date", "Status", "Remark"];
         const tableRows: (string | number)[][] = [];
@@ -185,7 +190,7 @@ export default function LoanDetailsPage() {
         autoTable(pdfDoc, {
             head: [tableColumn],
             body: tableRows,
-            startY: 55,
+            startY: 60,
             theme: 'grid',
             headStyles: { fillColor: [46, 154, 254] },
             styles: { font: "helvetica", fontSize: 8 },
@@ -224,12 +229,14 @@ export default function LoanDetailsPage() {
         const customerSnap = await getDoc(customerRef);
 
         let y = 15;
+        const leftMargin = 14;
 
-        // Header
-        pdfDoc.setFontSize(16);
-        pdfDoc.setFont("helvetica", "bold");
-        pdfDoc.text("JLS FINANCE LTD", 105, y, { align: 'center' });
-        y += 10;
+        if (JLS_LOGO_DATA_URL) {
+            pdfDoc.addImage(JLS_LOGO_DATA_URL, 'PNG', leftMargin, 15, 10, 10);
+            pdfDoc.setFont("helvetica", "bold");
+            pdfDoc.setFontSize(14);
+            pdfDoc.text("JLS Finance Company", leftMargin + 12, 22);
+        }
         
         // Customer photo with fallback
         if (customerSnap.exists() && customerSnap.data().photo_url) {
@@ -249,7 +256,7 @@ export default function LoanDetailsPage() {
                 console.error("Could not add customer image to PDF:", e);
             }
         }
-
+        y=35;
         pdfDoc.setFontSize(14);
         pdfDoc.setFont("helvetica", "normal");
         pdfDoc.text("Payment Receipt", 105, y, { align: 'center' });

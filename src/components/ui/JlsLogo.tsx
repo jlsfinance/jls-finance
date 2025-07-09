@@ -16,7 +16,7 @@ export const JlsLogo = React.forwardRef<
       alt="JLS Finance Logo"
       width={100} // Intrinsic width of the logo image
       height={100} // Intrinsic height of the logo image
-      className={cn("h-10 w-10", className)} // Display size can be overridden by className
+      className={cn("h-8 w-8", className)} // Display size can be overridden by className
       unoptimized
       {...props}
     />
