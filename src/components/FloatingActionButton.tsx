@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Plus, UserPlus, FilePlus, Receipt } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
 
 const fabMenuItems = [
   { href: '/customers/new', label: 'Add Customer', icon: UserPlus },
@@ -14,6 +15,12 @@ const fabMenuItems = [
 
 export function FloatingActionButton() {
   const [isOpen, setIsOpen] = useState(false);
+  const { user } = useAuth();
+
+  // Hide the FAB for customers or if the user is not logged in.
+  if (!user || user.role === 'customer') {
+    return null;
+  }
 
   return (
     <div 
