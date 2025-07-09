@@ -1,50 +1,64 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { db } from "@/lib/firebase";
-import { addDoc, collection, getDocs } from "firebase/firestore";
+import { collection, addDoc, query, where, getDocs } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
-
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Loader2, Check, ChevronsUpDown } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { cn } from "@/lib/utils";
+import { Textarea } from "@/components/ui/textarea";
+import { Separator } from "@/components/ui/separator";
+import { Loader2 } from "lucide-react";
 
-const loanSchema = z.object({
-  customerId: z.string().min(1, "Customer is required"),
+const loanApplicationSchema = z.object({
+  // Customer fields
+  name: z.string().min(2, "Full name is required."),
+  mobile: z.string().length(10, "A valid 10-digit mobile number is required."),
+  email: z.string().email("Please enter a valid email.").optional().or(z.literal('')),
+  address: z.string().optional(),
+  aadhaar: z.string().length(12, "Aadhaar must be 12 digits.").optional().or(z.literal('')),
+  pan: z.string().length(10, "PAN must be 10 characters.").optional().or(z.literal('')),
+  voter_id: z.string().optional(),
+  photo: z.instanceof(FileList).refine(files => files?.length >= 1, "Photo is required."),
+  guarantor: z.object({
+    name: z.string().optional(),
+    mobile: z.string().optional(),
+    address: z.string().optional(),
+    relation: z.string().optional(),
+  }).optional(),
+
+  // Loan fields
   amount: z.coerce.number().positive("Loan amount must be positive"),
   interestRate: z.coerce.number().min(0, "Interest rate cannot be negative"),
   tenure: z.coerce.number().int().positive("Tenure must be a positive number of months"),
   processingFeePercentage: z.coerce.number().min(0).max(100),
 });
 
-type LoanFormValues = z.infer<typeof loanSchema>;
-
-interface Customer {
-  id: string;
-  name: string;
-}
+type LoanApplicationFormValues = z.infer<typeof loanApplicationSchema>;
 
 export default function NewLoanPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [popoverOpen, setPopoverOpen] = useState(false);
 
-  const form = useForm<LoanFormValues>({
-    resolver: zodResolver(loanSchema),
+  const form = useForm<LoanApplicationFormValues>({
+    resolver: zodResolver(loanApplicationSchema),
     defaultValues: {
-      customerId: "",
+      name: "",
+      mobile: "",
+      email: "",
+      address: "",
+      aadhaar: "",
+      pan: "",
+      voter_id: "",
+      guarantor: { name: "", mobile: "", address: "", relation: "" },
       amount: 10000,
       interestRate: 12,
       tenure: 12,
@@ -52,195 +66,193 @@ export default function NewLoanPage() {
     },
   });
 
-  useEffect(() => {
-    const fetchCustomers = async () => {
-      try {
-        const querySnapshot = await getDocs(collection(db, "customers"));
-        const customersData = querySnapshot.docs.map((doc) => ({
-          id: doc.id,
-          name: doc.data().name,
-        })) as Customer[];
-        setCustomers(customersData);
-      } catch (error) {
-        console.error("Error fetching customers: ", error);
-        toast({
-          variant: "destructive",
-          title: "Failed to load customers",
-          description: "Could not fetch customer list from Firestore.",
-        });
-      }
-    };
-    fetchCustomers();
-  }, [toast]);
-
-  const onSubmit = async (data: LoanFormValues) => {
+  const onSubmit = async (data: LoanApplicationFormValues) => {
     setIsSubmitting(true);
     try {
-        const customer = customers.find(c => c.id === data.customerId);
-        if (!customer) {
-            throw new Error("Selected customer not found.");
+      // 1. Duplicate Check
+      if (data.mobile) {
+        const phoneQuery = query(collection(db, "customers"), where("mobile", "==", data.mobile));
+        const phoneSnapshot = await getDocs(phoneQuery);
+        if (!phoneSnapshot.empty) {
+          form.setError("mobile", { type: "manual", message: "This mobile number is already registered." });
+          setIsSubmitting(false);
+          return;
         }
+      }
+      if (data.aadhaar) {
+          const aadhaarQuery = query(collection(db, "customers"), where("aadhaar", "==", data.aadhaar));
+          const aadhaarSnapshot = await getDocs(aadhaarQuery);
+          if (!aadhaarSnapshot.empty) {
+              form.setError("aadhaar", { type: "manual", message: "This Aadhaar number is already registered." });
+              setIsSubmitting(false);
+              return;
+          }
+      }
 
-        const processingFee = (data.amount * data.processingFeePercentage) / 100;
-        const monthlyInterestRate = data.interestRate / 12 / 100;
-        const emi = (data.amount * monthlyInterestRate * Math.pow(1 + monthlyInterestRate, data.tenure)) / (Math.pow(1 + monthlyInterestRate, data.tenure) - 1);
+      // 2. Upload photo
+      let photoUrl = "";
+      const photoFile = data.photo?.[0];
+      if (photoFile) {
+        const formData = new FormData();
+        formData.append("key", "c9f4edabbd1fe1bc3a063e26bc6a2ecd"); // This is a public demo key
+        formData.append("image", photoFile);
+        const response = await fetch("https://api.imgbb.com/1/upload", { method: "POST", body: formData });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.error?.message || "Could not upload photo.");
+        photoUrl = result.data.url;
+      }
 
-        await addDoc(collection(db, "loans"), {
-            ...data,
-            customerName: customer.name,
-            processingFee: Math.round(processingFee),
-            emi: Math.round(emi),
-            date: new Date().toISOString().split('T')[0],
-            status: "Pending", // Initial status
-        });
+      // 3. Create Customer
+      const customerData = {
+        name: data.name,
+        mobile: data.mobile,
+        email: data.email,
+        address: data.address,
+        aadhaar: data.aadhaar,
+        pan: data.pan,
+        voter_id: data.voter_id,
+        guarantor: data.guarantor,
+        status: "Active",
+        createdAt: new Date().toISOString(),
+        photo_url: photoUrl
+      };
+      const customerDocRef = await addDoc(collection(db, "customers"), customerData);
 
-        toast({
-            title: "✅ Loan Application Submitted",
-            description: `Application for ${customer.name} has been successfully created.`,
-        });
-        router.push("/admin/approvals");
-    } catch (error) {
-        console.error("Error saving loan application:", error);
-        toast({
-            variant: "destructive",
-            title: "❌ Submission Failed",
-            description: "Could not save the loan application.",
-        });
+      // 4. Create Loan
+      const processingFee = (data.amount * data.processingFeePercentage) / 100;
+      const monthlyInterestRate = data.interestRate / 12 / 100;
+      const emi = (data.amount * monthlyInterestRate * Math.pow(1 + monthlyInterestRate, data.tenure)) / (Math.pow(1 + monthlyInterestRate, data.tenure) - 1);
+      
+      await addDoc(collection(db, "loans"), {
+        customerId: customerDocRef.id,
+        customerName: data.name,
+        amount: data.amount,
+        interestRate: data.interestRate,
+        tenure: data.tenure,
+        processingFeePercentage: data.processingFeePercentage,
+        processingFee: Math.round(processingFee),
+        emi: Math.round(emi),
+        date: new Date().toISOString().split('T')[0],
+        status: "Pending",
+      });
+
+      toast({
+        title: "✅ Application Submitted",
+        description: `Loan application for ${data.name} created successfully.`,
+      });
+      router.push("/admin/approvals");
+
+    } catch (error: any) {
+      console.error("Error submitting application:", error);
+      toast({
+        variant: "destructive",
+        title: "❌ Submission Failed",
+        description: error.message || "An unexpected error occurred.",
+      });
     } finally {
-        setIsSubmitting(false);
+      setIsSubmitting(false);
     }
   };
 
   return (
     <div className="space-y-6">
-        <h1 className="text-2xl font-headline font-semibold">New Loan Application</h1>
-        <Card className="max-w-2xl mx-auto shadow-lg">
+        <h1 className="text-2xl font-headline font-semibold">New Customer Loan Application</h1>
+        <Card className="max-w-3xl mx-auto shadow-lg">
             <CardHeader>
-                <CardTitle>Loan Details</CardTitle>
-                <CardDescription>Fill out the form to create a new loan application.</CardDescription>
+                <CardTitle>Application Form</CardTitle>
+                <CardDescription>Register a new customer and their loan application at the same time.</CardDescription>
             </CardHeader>
             <CardContent>
                 <Form {...form}>
-                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                        <FormField
-                            control={form.control}
-                            name="customerId"
-                            render={({ field }) => (
-                                <FormItem className="flex flex-col">
-                                <FormLabel>Customer</FormLabel>
-                                <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
-                                    <PopoverTrigger asChild>
-                                        <FormControl>
-                                            <Button
-                                            variant="outline"
-                                            role="combobox"
-                                            aria-expanded={popoverOpen}
-                                            className={cn(
-                                                "w-full justify-between",
-                                                !field.value && "text-muted-foreground"
-                                            )}
-                                            >
-                                            {field.value
-                                                ? customers.find(
-                                                    (customer) => customer.id === field.value
-                                                )?.name
-                                                : "Select a registered customer"}
-                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                            </Button>
-                                        </FormControl>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                                        <Command>
-                                            <CommandInput placeholder="Search customer..." />
-                                            <CommandList>
-                                                <CommandEmpty>No customer found.</CommandEmpty>
-                                                <CommandGroup>
-                                                {customers.map((customer) => (
-                                                    <CommandItem
-                                                    value={customer.name}
-                                                    key={customer.id}
-                                                    onSelect={() => {
-                                                        form.setValue("customerId", customer.id);
-                                                        setPopoverOpen(false);
-                                                    }}
-                                                    >
-                                                    <Check
-                                                        className={cn(
-                                                        "mr-2 h-4 w-4",
-                                                        customer.id === field.value
-                                                            ? "opacity-100"
-                                                            : "opacity-0"
-                                                        )}
-                                                    />
-                                                    {customer.name}
-                                                    </CommandItem>
-                                                ))}
-                                                </CommandGroup>
-                                            </CommandList>
-                                        </Command>
-                                    </PopoverContent>
-                                </Popover>
-                                <FormMessage />
-                                </FormItem>
-                            )}
-                        />
+                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
                         
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <FormField
-                                control={form.control}
-                                name="amount"
-                                render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Loan Amount (₹)</FormLabel>
-                                    <FormControl><Input type="number" {...field} /></FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                                )}
-                            />
-                             <FormField
-                                control={form.control}
-                                name="tenure"
-                                render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Tenure (Months)</FormLabel>
-                                    <FormControl><Input type="number" {...field} /></FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                                )}
-                            />
+                        <div className="space-y-4">
+                             <h3 className="text-lg font-medium text-primary">Personal Information</h3>
+                             <FormField control={form.control} name="name" render={({ field }) => (
+                                <FormItem><FormLabel>Full Name *</FormLabel><FormControl><Input placeholder="John Doe" {...field} /></FormControl><FormMessage /></FormItem>
+                             )} />
+                             <div className="grid md:grid-cols-2 gap-4">
+                                 <FormField control={form.control} name="mobile" render={({ field }) => (
+                                    <FormItem><FormLabel>Mobile Number *</FormLabel><FormControl><Input placeholder="9876543210" {...field} /></FormControl><FormMessage /></FormItem>
+                                 )} />
+                                 <FormField control={form.control} name="email" render={({ field }) => (
+                                    <FormItem><FormLabel>Email Address</FormLabel><FormControl><Input placeholder="john.d@example.com" {...field} /></FormControl><FormMessage /></FormItem>
+                                 )} />
+                             </div>
+                              <FormField control={form.control} name="address" render={({ field }) => (
+                                <FormItem><FormLabel>Full Address</FormLabel><FormControl><Textarea placeholder="123, Main Street, New Delhi" {...field} /></FormControl><FormMessage /></FormItem>
+                             )} />
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <FormField
-                                control={form.control}
-                                name="interestRate"
-                                render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Interest Rate (% p.a.)</FormLabel>
-                                    <FormControl><Input type="number" step="0.1" {...field} /></FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                                )}
-                            />
-                            <FormField
-                                control={form.control}
-                                name="processingFeePercentage"
-                                render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Processing Fee (%)</FormLabel>
-                                    <FormControl><Input type="number" step="0.1" {...field} /></FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                                )}
-                            />
+
+                        <Separator />
+
+                        <div className="space-y-4">
+                            <h3 className="text-lg font-medium text-primary">KYC Details & Photo</h3>
+                            <div className="grid md:grid-cols-2 gap-4">
+                                <FormField control={form.control} name="aadhaar" render={({ field }) => (
+                                <FormItem><FormLabel>Aadhaar Number</FormLabel><FormControl><Input placeholder="12-digit number" {...field} /></FormControl><FormMessage /></FormItem>
+                                )} />
+                                <FormField control={form.control} name="pan" render={({ field }) => (
+                                <FormItem><FormLabel>PAN Number</FormLabel><FormControl><Input placeholder="10-character alphanumeric" {...field} /></FormControl><FormMessage /></FormItem>
+                                )} />
+                                <FormField control={form.control} name="voter_id" render={({ field }) => (
+                                <FormItem><FormLabel>Voter ID</FormLabel><FormControl><Input placeholder="Voter card number" {...field} /></FormControl><FormMessage /></FormItem>
+                                )} />
+                                <FormField control={form.control} name="photo" render={({ field: { onChange, value, ...rest } }) => (
+                                    <FormItem><FormLabel>Profile Photo *</FormLabel><FormControl><Input type="file" accept="image/*" onChange={(e) => onChange(e.target.files)} {...rest} /></FormControl><FormMessage /></FormItem>
+                                )} />
+                            </div>
                         </div>
+
+                        <Separator />
+
+                        <div className="space-y-4">
+                            <h3 className="text-lg font-medium text-primary">Guarantor Information</h3>
+                            <FormField control={form.control} name="guarantor.name" render={({ field }) => (
+                                <FormItem><FormLabel>Guarantor Name</FormLabel><FormControl><Input placeholder="Jane Smith" {...field} /></FormControl><FormMessage /></FormItem>
+                            )} />
+                             <div className="grid md:grid-cols-2 gap-4">
+                                <FormField control={form.control} name="guarantor.mobile" render={({ field }) => (
+                                <FormItem><FormLabel>Guarantor Mobile</FormLabel><FormControl><Input placeholder="9876543211" {...field} /></FormControl><FormMessage /></FormItem>
+                                )} />
+                                <FormField control={form.control} name="guarantor.relation" render={({ field }) => (
+                                <FormItem><FormLabel>Relation to Customer</FormLabel><FormControl><Input placeholder="Spouse, Father, etc." {...field} /></FormControl><FormMessage /></FormItem>
+                                )} />
+                            </div>
+                            <FormField control={form.control} name="guarantor.address" render={({ field }) => (
+                                <FormItem><FormLabel>Guarantor Address</FormLabel><FormControl><Textarea placeholder="Guarantor's full address" {...field} /></FormControl><FormMessage /></FormItem>
+                            )} />
+                        </div>
+
+                        <Separator />
+
+                        <div className="space-y-4">
+                            <h3 className="text-lg font-medium text-primary">Loan Details</h3>
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <FormField control={form.control} name="amount" render={({ field }) => (
+                                    <FormItem><FormLabel>Loan Amount (₹)</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>
+                                )} />
+                                <FormField control={form.control} name="tenure" render={({ field }) => (
+                                    <FormItem><FormLabel>Tenure (Months)</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>
+                                )} />
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <FormField control={form.control} name="interestRate" render={({ field }) => (
+                                    <FormItem><FormLabel>Interest Rate (% p.a.)</FormLabel><FormControl><Input type="number" step="0.1" {...field} /></FormControl><FormMessage /></FormItem>
+                                )} />
+                                <FormField control={form.control} name="processingFeePercentage" render={({ field }) => (
+                                    <FormItem><FormLabel>Processing Fee (%)</FormLabel><FormControl><Input type="number" step="0.1" {...field} /></FormControl><FormMessage /></FormItem>
+                                )} />
+                            </div>
+                        </div>
+                        
                         <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isSubmitting}>
-                           {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                           Submit Application
+                            {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Please wait...</> : "Submit Application"}
                         </Button>
                     </form>
                 </Form>
             </CardContent>
         </Card>
     </div>
-  )
+  );
 }
