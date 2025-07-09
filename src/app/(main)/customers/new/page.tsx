@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState } from "react"
@@ -55,26 +54,28 @@ export default function NewCustomerPage() {
     const form = useForm<CustomerFormValues>({
         resolver: zodResolver(customerFormSchema),
         defaultValues: {
-            fullName: "jitu maheshwari",
-            mobile: "9461612455",
-            address: "kjadbkdbk",
-            aadhaar: "941382100745",
-            pan: "abcde1234r",
-            voterId: "nzjxznxnn",
+            fullName: "",
+            mobile: "",
+            address: "",
+            aadhaar: "",
+            pan: "",
+            voterId: "",
             guarantor: {
-                name: "snlkscnlsac",
-                relation: "xaxaxax",
-                mobile: "9541234567",
-                address: "a;mxcmlskclsmc",
+                name: "",
+                relation: "",
+                mobile: "",
+                address: "",
             }
         },
     });
-    
-    const fileRef = form.register("photo");
 
   async function onSubmit(values: CustomerFormValues) {
     if (!user) {
         toast({ variant: "destructive", title: "Not Authenticated", description: "You must be logged in to create a customer." });
+        return;
+    }
+    if (!storage || !db) {
+        toast({ variant: "destructive", title: "Configuration Error", description: "Firebase is not configured correctly." });
         return;
     }
     setIsSubmitting(true);
@@ -96,7 +97,7 @@ export default function NewCustomerPage() {
           aadhaar: values.aadhaar || null,
           pan: values.pan || null,
           voterId: values.voterId || null,
-          guarantor: values.guarantor ? {
+          guarantor: values.guarantor && (values.guarantor.name || values.guarantor.mobile) ? {
               name: values.guarantor.name || null,
               relation: values.guarantor.relation || null,
               mobile: values.guarantor.mobile || null,
@@ -200,17 +201,17 @@ export default function NewCustomerPage() {
                              <FormField
                               control={form.control}
                               name="photo"
-                              render={({ field }) => (
+                              render={({ field: { onChange, ...rest } }) => (
                                   <FormItem>
                                       <FormLabel>Upload Photo *</FormLabel>
                                       <FormControl>
                                           <Input
                                               type="file"
                                               accept="image/png, image/jpeg, image/jpg"
-                                              {...fileRef}
                                               onChange={(event) => {
-                                                  field.onChange(event.target.files);
-                                                  const file = event.target.files?.[0];
+                                                  const files = event.target.files;
+                                                  onChange(files);
+                                                  const file = files?.[0];
                                                   if (file) {
                                                       const reader = new FileReader();
                                                       reader.onloadend = () => {
@@ -221,6 +222,7 @@ export default function NewCustomerPage() {
                                                       setPhotoPreview(null);
                                                   }
                                               }}
+                                              {...rest}
                                           />
                                       </FormControl>
                                       <FormDescription>Must be a clear, passport-sized photo. Max 2MB.</FormDescription>
@@ -256,5 +258,3 @@ export default function NewCustomerPage() {
     </div>
   );
 }
-
-    
