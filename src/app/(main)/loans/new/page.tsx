@@ -6,8 +6,6 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { db } from "@/lib/firebase";
-import { collection, addDoc, query, where, getDocs } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +14,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Loader2 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/context/AuthContext";
 
 const loanApplicationSchema = z.object({
   // Customer fields
@@ -26,7 +26,7 @@ const loanApplicationSchema = z.object({
   aadhaar: z.string().length(12, "Aadhaar must be 12 digits.").optional().or(z.literal('')),
   pan: z.string().length(10, "PAN must be 10 characters.").optional().or(z.literal('')),
   voter_id: z.string().optional(),
-  photo: z.instanceof(FileList).refine(files => files?.length >= 1, "Photo is required."),
+  
   guarantor: z.object({
     name: z.string().optional(),
     mobile: z.string().optional(),
@@ -46,6 +46,7 @@ type LoanApplicationFormValues = z.infer<typeof loanApplicationSchema>;
 export default function NewLoanPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<LoanApplicationFormValues>({
@@ -67,45 +68,16 @@ export default function NewLoanPage() {
   });
 
   const onSubmit = async (data: LoanApplicationFormValues) => {
+    if (!user) {
+        toast({ variant: "destructive", title: "Authentication Error", description: "You must be logged in." });
+        return;
+    }
     setIsSubmitting(true);
     try {
-      // 1. Duplicate Check
-      if (data.mobile) {
-        const phoneQuery = query(collection(db, "customers"), where("mobile", "==", data.mobile));
-        const phoneSnapshot = await getDocs(phoneQuery);
-        if (!phoneSnapshot.empty) {
-          form.setError("mobile", { type: "manual", message: "This mobile number is already registered." });
-          setIsSubmitting(false);
-          return;
-        }
-      }
-      if (data.aadhaar) {
-          const aadhaarQuery = query(collection(db, "customers"), where("aadhaar", "==", data.aadhaar));
-          const aadhaarSnapshot = await getDocs(aadhaarQuery);
-          if (!aadhaarSnapshot.empty) {
-              form.setError("aadhaar", { type: "manual", message: "This Aadhaar number is already registered." });
-              setIsSubmitting(false);
-              return;
-          }
-      }
-
-      // 2. Upload photo
-      let photoUrl = "";
-      const photoFile = data.photo?.[0];
-      if (photoFile) {
-        const formData = new FormData();
-        formData.append("key", "c9f4edabbd1fe1bc3a063e26bc6a2ecd"); // This is a public demo key
-        formData.append("image", photoFile);
-        const response = await fetch("https://api.imgbb.com/1/upload", { method: "POST", body: formData });
-        const result = await response.json();
-        if (!response.ok || !result.success) throw new Error(result.error?.message || "Could not upload photo.");
-        photoUrl = result.data.url;
-      }
-
-      // 3. Create Customer
-      const customerData = {
+      // 1. Create Customer in Supabase
+      const { data: customerData, error: customerError } = await supabase.from("customers").insert({
         name: data.name,
-        mobile: data.mobile,
+        phone: data.mobile,
         email: data.email,
         address: data.address,
         aadhaar: data.aadhaar,
@@ -113,28 +85,31 @@ export default function NewLoanPage() {
         voter_id: data.voter_id,
         guarantor: data.guarantor,
         status: "Active",
-        createdAt: new Date().toISOString(),
-        photo_url: photoUrl
-      };
-      const customerDocRef = await addDoc(collection(db, "customers"), customerData);
+        created_by: user.uid,
+      }).select().single();
 
-      // 4. Create Loan
+      if (customerError) throw customerError;
+      
+      const newCustomerId = customerData.id;
+      
+      // 2. Create Loan in Supabase
       const processingFee = (data.amount * data.processingFeePercentage) / 100;
       const monthlyInterestRate = data.interestRate / 12 / 100;
       const emi = (data.amount * monthlyInterestRate * Math.pow(1 + monthlyInterestRate, data.tenure)) / (Math.pow(1 + monthlyInterestRate, data.tenure) - 1);
       
-      await addDoc(collection(db, "loans"), {
-        customerId: customerDocRef.id,
-        customerName: data.name,
+      const { error: loanError } = await supabase.from("loans").insert({
+        customer_id: newCustomerId,
+        customer_name: data.name,
         amount: data.amount,
-        interestRate: data.interestRate,
+        interest_rate: data.interestRate,
         tenure: data.tenure,
-        processingFeePercentage: data.processingFeePercentage,
-        processingFee: Math.round(processingFee),
+        processing_fee_percentage: data.processingFeePercentage,
+        processing_fee: Math.round(processingFee),
         emi: Math.round(emi),
-        date: new Date().toISOString().split('T')[0],
         status: "Pending",
       });
+
+      if (loanError) throw loanError;
 
       toast({
         title: "✅ Application Submitted",
@@ -187,7 +162,7 @@ export default function NewLoanPage() {
                         <Separator />
 
                         <div className="space-y-4">
-                            <h3 className="text-lg font-medium text-primary">KYC Details & Photo</h3>
+                            <h3 className="text-lg font-medium text-primary">KYC Details</h3>
                             <div className="grid md:grid-cols-2 gap-4">
                                 <FormField control={form.control} name="aadhaar" render={({ field }) => (
                                 <FormItem><FormLabel>Aadhaar Number</FormLabel><FormControl><Input placeholder="12-digit number" {...field} /></FormControl><FormMessage /></FormItem>
@@ -197,9 +172,6 @@ export default function NewLoanPage() {
                                 )} />
                                 <FormField control={form.control} name="voter_id" render={({ field }) => (
                                 <FormItem><FormLabel>Voter ID</FormLabel><FormControl><Input placeholder="Voter card number" {...field} /></FormControl><FormMessage /></FormItem>
-                                )} />
-                                <FormField control={form.control} name="photo" render={({ field: { onChange, value, ...rest } }) => (
-                                    <FormItem><FormLabel>Profile Photo *</FormLabel><FormControl><Input type="file" accept="image/*" onChange={(e) => onChange(e.target.files)} {...rest} /></FormControl><FormMessage /></FormItem>
                                 )} />
                             </div>
                         </div>
@@ -256,5 +228,3 @@ export default function NewLoanPage() {
     </div>
   );
 }
-
-    

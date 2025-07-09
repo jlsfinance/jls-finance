@@ -10,7 +10,6 @@ import { ArrowLeft, Printer, Loader2 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from "@/hooks/use-toast";
-import { Dialog, DialogContent, DialogTrigger, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import jsPDF from 'jspdf';
 import { supabase } from '@/lib/supabase';
 
@@ -18,20 +17,10 @@ interface Customer {
   id: string;
   name: string;
   email: string;
-  mobile: string;
-  aadhaar: string;
-  pan: string;
+  phone: string;
   status: string;
-  dob: string;
-  gender: string;
-  maritalStatus: string;
-  fatherName: string;
   address: string;
-  city: string;
-  state: string;
-  pincode: string;
-  photo: string;
-  photoUrl?: string;
+  photo_url?: string;
 }
 
 export default function CustomerDetailsClient() {
@@ -56,22 +45,13 @@ export default function CustomerDetailsClient() {
 
           if (error) throw error;
           
-          if (data) {
-              let photoUrl = 'https://placehold.co/400x400.png';
-              if (data.photo) {
-                const { data: photoData } = supabase.storage
-                  .from('customer-photos')
-                  .getPublicUrl(data.photo);
-                  photoUrl = photoData.publicUrl;
-              }
-              setCustomer({ ...data, photoUrl });
-          }
+          setCustomer(data);
         } catch (error: any) {
           console.error("Failed to load customer:", error);
           toast({
             variant: "destructive",
             title: "Load Failed",
-            description: "Could not load customer profile.",
+            description: "Could not load customer profile from Supabase.",
           });
         } finally {
           setLoading(false);
@@ -92,7 +72,6 @@ export default function CustomerDetailsClient() {
         const doc = new jsPDF('p', 'mm', 'a4');
         let y = 15;
 
-        // Header
         doc.setFontSize(16);
         doc.setFont("helvetica", "bold");
         doc.text('JLS FINANCE LTD', doc.internal.pageSize.getWidth() / 2, y, { align: 'center' });
@@ -103,55 +82,21 @@ export default function CustomerDetailsClient() {
         doc.text('Customer Profile', doc.internal.pageSize.getWidth() / 2, y, { align: 'center' });
         y += 15;
 
-        // --- Personal Information ---
         doc.setFontSize(12);
         doc.setFont("helvetica", "bold");
-        doc.text('Personal Information', 15, y);
+        doc.text('Personal & Contact Information', 15, y);
         y += 7;
         doc.line(15, y - 5, doc.internal.pageSize.getWidth() - 15, y - 5);
         
         doc.setFontSize(10);
         doc.setFont("helvetica", "normal");
         doc.text(`Full Name: ${customer.name}`, 15, y);
-        doc.text(`Date of Birth: ${customer.dob}`, 100, y);
         y += 7;
-        doc.text(`Gender: ${customer.gender}`, 15, y);
-        doc.text(`Marital Status: ${customer.maritalStatus}`, 100, y);
+        doc.text(`Mobile Number: ${customer.phone || 'N/A'}`, 15, y);
+        doc.text(`Email Address: ${customer.email || 'N/A'}`, 100, y);
         y += 7;
-        doc.text(`Father's/Spouse's Name: ${customer.fatherName}`, 15, y);
-        y += 12;
-
-        // --- Contact Details ---
-        doc.setFontSize(12);
-        doc.setFont("helvetica", "bold");
-        doc.text('Contact Details', 15, y);
-        y += 7;
-        doc.line(15, y - 5, doc.internal.pageSize.getWidth() - 15, y - 5);
-        
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "normal");
-        doc.text(`Mobile Number: ${customer.mobile}`, 15, y);
-        doc.text(`Email Address: ${customer.email}`, 100, y);
-        y += 7;
-        const addressLines = doc.splitTextToSize(`Full Address: ${customer.address}, ${customer.city}, ${customer.state} - ${customer.pincode}`, 180);
+        const addressLines = doc.splitTextToSize(`Address: ${customer.address || 'N/A'}`, 180);
         doc.text(addressLines, 15, y);
-        y += (addressLines.length * 5) + 5;
-
-
-        // --- KYC Details ---
-        doc.setFontSize(12);
-        doc.setFont("helvetica", "bold");
-        doc.text('KYC Details', 15, y);
-        y += 7;
-        doc.line(15, y - 5, doc.internal.pageSize.getWidth() - 15, y - 5);
-
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "normal");
-        doc.text(`Aadhaar Number: ${customer.aadhaar}`, 15, y);
-        doc.text(`PAN Number: ${customer.pan}`, 100, y);
-        y += 7;
-        doc.text(`KYC Documents: On File`, 15, y);
-        y += 12;
         
         doc.save(`Customer_Profile_${customer.name.replace(/\s+/g, '_')}.pdf`);
 
@@ -165,7 +110,7 @@ export default function CustomerDetailsClient() {
         toast({
             variant: "destructive",
             title: "Download Failed",
-            description: "Could not generate the PDF. Please try again.",
+            description: "Could not generate the PDF.",
         });
     } finally {
         setIsPrinting(false);
@@ -218,7 +163,7 @@ export default function CustomerDetailsClient() {
       <Card id="printable-area" className="w-full max-w-4xl mx-auto shadow-lg bg-card">
         <CardHeader className="flex flex-col md:flex-row items-start md:items-center gap-6 p-6 bg-primary/5">
           <Avatar className="h-24 w-24 border-4 border-white shadow-md">
-            <AvatarImage src={customer.photoUrl || placeholderImage} alt={customer.name} data-ai-hint="person portrait" />
+            <AvatarImage src={customer.photo_url || placeholderImage} alt={customer.name} data-ai-hint="person portrait" />
             <AvatarFallback>{customer.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
           </Avatar>
           <div className="space-y-1">
@@ -234,136 +179,11 @@ export default function CustomerDetailsClient() {
         <CardContent className="p-6">
           <div className="space-y-8">
             <div>
-              <h3 className="font-semibold text-lg mb-4 text-primary border-b pb-2">Personal Information</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4 text-sm">
-                <div><span className="font-medium text-muted-foreground block">Date of Birth</span> {customer.dob}</div>
-                <div><span className="font-medium text-muted-foreground block">Gender</span> {customer.gender}</div>
-                <div><span className="font-medium text-muted-foreground block">Marital Status</span> {customer.maritalStatus}</div>
-                <div className="md:col-span-2"><span className="font-medium text-muted-foreground block">Father's/Spouse's Name</span> {customer.fatherName}</div>
-              </div>
-            </div>
-
-            <div>
               <h3 className="font-semibold text-lg mb-4 text-primary border-b pb-2">Contact Details</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4 text-sm">
-                <div><span className="font-medium text-muted-foreground block">Mobile Number</span> {customer.mobile}</div>
-                <div className="md:col-span-2"><span className="font-medium text-muted-foreground block">Email Address</span> {customer.email}</div>
-                <div className="col-span-full"><span className="font-medium text-muted-foreground block">Full Address</span> {`${customer.address}, ${customer.city}, ${customer.state} - ${customer.pincode}`}</div>
-              </div>
-            </div>
-            
-            <div>
-              <h3 className="font-semibold text-lg mb-4 text-primary border-b pb-2">KYC Details</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4 text-sm">
-                <div><span className="font-medium text-muted-foreground block">Aadhaar Number</span> {customer.aadhaar}</div>
-                <div><span className="font-medium text-muted-foreground block">PAN Number</span> {customer.pan}</div>
-              </div>
-            </div>
-
-            <div>
-              <h3 className="font-semibold text-lg mb-4 text-primary border-b pb-2">KYC Documents</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Card className="overflow-hidden cursor-pointer hover:shadow-xl transition-shadow">
-                      <CardContent className="p-0">
-                        <Image
-                          src={customer.photoUrl || placeholderImage}
-                          alt="Customer Photo"
-                          width={400}
-                          height={400}
-                          className="object-cover w-full h-auto aspect-square"
-                          data-ai-hint="person portrait"
-                        />
-                      </CardContent>
-                      <div className="p-4 bg-card">
-                        <h4 className="font-semibold text-center">Customer Photo</h4>
-                      </div>
-                    </Card>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-xl p-0">
-                    <DialogHeader>
-                      <DialogTitle className="sr-only">Customer Photo Preview</DialogTitle>
-                      <DialogDescription className="sr-only">A larger view of the customer's photo.</DialogDescription>
-                    </DialogHeader>
-                    <Image
-                      src={customer.photoUrl || placeholderImage}
-                      alt="Customer Photo"
-                      width={800}
-                      height={800}
-                      className="w-full h-auto rounded-lg"
-                      data-ai-hint="person portrait"
-                    />
-                  </DialogContent>
-                </Dialog>
-
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Card className="overflow-hidden cursor-pointer hover:shadow-xl transition-shadow">
-                      <CardContent className="p-0">
-                        <Image
-                          src="https://placehold.co/600x400.png"
-                          alt="Aadhaar Card"
-                          width={400}
-                          height={400}
-                          className="object-cover w-full h-auto aspect-square"
-                          data-ai-hint="document id card"
-                        />
-                      </CardContent>
-                      <div className="p-4 bg-card">
-                        <h4 className="font-semibold text-center">Aadhaar Card</h4>
-                      </div>
-                    </Card>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-xl p-0">
-                    <DialogHeader>
-                      <DialogTitle className="sr-only">Aadhaar Card Preview</DialogTitle>
-                      <DialogDescription className="sr-only">A larger view of the Aadhaar card.</DialogDescription>
-                    </DialogHeader>
-                    <Image
-                      src="https://placehold.co/600x400.png"
-                      alt="Aadhaar Card"
-                      width={800}
-                      height={800}
-                      className="w-full h-auto rounded-lg"
-                      data-ai-hint="document id card"
-                    />
-                  </DialogContent>
-                </Dialog>
-
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Card className="overflow-hidden cursor-pointer hover:shadow-xl transition-shadow">
-                      <CardContent className="p-0">
-                        <Image
-                          src="https://placehold.co/600x400.png"
-                          alt="PAN Card"
-                          width={400}
-                          height={400}
-                          className="object-cover w-full h-auto aspect-square"
-                          data-ai-hint="document id card"
-                        />
-                      </CardContent>
-                      <div className="p-4 bg-card">
-                        <h4 className="font-semibold text-center">PAN Card</h4>
-                      </div>
-                    </Card>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-xl p-0">
-                    <DialogHeader>
-                      <DialogTitle className="sr-only">PAN Card Preview</DialogTitle>
-                       <DialogDescription className="sr-only">A larger view of the PAN card.</DialogDescription>
-                    </DialogHeader>
-                    <Image
-                      src="https://placehold.co/600x400.png"
-                      alt="PAN Card"
-                      width={800}
-                      height={800}
-                      className="w-full h-auto rounded-lg"
-                      data-ai-hint="document id card"
-                    />
-                  </DialogContent>
-                </Dialog>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 text-sm">
+                <div><span className="font-medium text-muted-foreground block">Phone Number</span> {customer.phone || 'N/A'}</div>
+                <div><span className="font-medium text-muted-foreground block">Email Address</span> {customer.email || 'N/A'}</div>
+                <div className="col-span-full"><span className="font-medium text-muted-foreground block">Full Address</span> {customer.address || 'N/A'}</div>
               </div>
             </div>
           </div>

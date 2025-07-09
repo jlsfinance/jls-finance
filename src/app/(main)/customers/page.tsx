@@ -13,13 +13,11 @@ import { useToast } from "@/hooks/use-toast"
 interface Customer {
   id: string;
   name: string;
-  mobile: string;
+  phone: string;
   email: string;
-  city: string;
-  state: string;
+  address: string;
   status: string;
-  photo: string;
-  photoUrl?: string;
+  photo_url: string;
 }
 
 export default function CustomersPage() {
@@ -40,19 +38,7 @@ export default function CustomersPage() {
         if (error) throw error;
         
         if (customerData) {
-          // Get public URLs for photos
-          const customersWithPhotoUrls = await Promise.all(
-            customerData.map(async (customer) => {
-              if (customer.photo) {
-                const { data: photoData } = supabase.storage
-                  .from('customer-photos')
-                  .getPublicUrl(customer.photo);
-                return { ...customer, photoUrl: photoData.publicUrl };
-              }
-              return { ...customer, photoUrl: 'https://placehold.co/40x40.png' };
-            })
-          );
-          setCustomers(customersWithPhotoUrls);
+          setCustomers(customerData);
         }
 
       } catch (error: any) {
@@ -70,12 +56,13 @@ export default function CustomersPage() {
   }, [toast]);
   
   const filteredCustomers = useMemo(() => {
+    const lowercasedFilter = searchTerm.toLowerCase()
     return customers.filter(customer =>
-      (customer.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (customer.mobile || '').includes(searchTerm) ||
-      (customer.id || '').toLowerCase().includes(searchTerm.toLowerCase())
+      (customer.name || '').toLowerCase().includes(lowercasedFilter) ||
+      (customer.id || '').toLowerCase().includes(lowercasedFilter) ||
+      (customer.phone && customer.phone.includes(searchTerm))
     );
-  }, [customers, searchTerm]);
+  }, [searchTerm, customers])
 
   return (
     <div className="space-y-6">
@@ -98,7 +85,7 @@ export default function CustomersPage() {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
           <Input 
-            placeholder="Search by Name, Customer ID, Mobile..." 
+            placeholder="Search by Name, Customer ID, Phone..." 
             className="pl-10"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -121,7 +108,7 @@ export default function CustomersPage() {
                 <TableRow>
                   <TableCell colSpan={5} className="text-center h-24">
                     <Loader2 className="mx-auto h-6 w-6 animate-spin" />
-                    <p>Loading customers...</p>
+                    <p>Loading customers from Supabase...</p>
                   </TableCell>
                 </TableRow>
               ) : filteredCustomers.length > 0 ? filteredCustomers.map((customer) => (
@@ -129,17 +116,17 @@ export default function CustomersPage() {
                   <TableCell>
                       <div className="flex items-center gap-3">
                           <Avatar>
-                              <AvatarImage src={customer.photoUrl} alt={customer.name} />
+                              <AvatarImage src={customer.photo_url} alt={customer.name} />
                               <AvatarFallback>{customer.name.split(' ').map((n: string) => n[0]).join('')}</AvatarFallback>
                           </Avatar>
                           <div className="font-medium">{customer.name}</div>
                       </div>
                   </TableCell>
                   <TableCell>
-                    <div>{customer.mobile}</div>
+                    <div>{customer.phone}</div>
                     <div className="text-xs text-muted-foreground">{customer.email}</div>
                   </TableCell>
-                  <TableCell>{`${customer.city}, ${customer.state}`}</TableCell>
+                  <TableCell>{customer.address}</TableCell>
                   <TableCell>{customer.status}</TableCell>
                   <TableCell>
                       <Button variant="link" size="sm" asChild>
@@ -150,7 +137,7 @@ export default function CustomersPage() {
               )) : (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center h-24">
-                    No customers found.
+                    No customers found in Supabase.
                   </TableCell>
                 </TableRow>
               )}

@@ -17,7 +17,7 @@ interface Customer {
   id: string;
   name: string;
   email: string;
-  mobile: string;
+  phone: string; // Changed from mobile
   aadhaar: string;
   pan: string;
   status: string;
@@ -133,7 +133,7 @@ export default function CustomerDetailsPage() {
             <div>
               <h3 className="font-semibold text-lg mb-4 text-primary border-b pb-2">Contact Details</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 text-sm">
-                <div><span className="font-medium text-muted-foreground block">Mobile Number</span> {customer.mobile}</div>
+                <div><span className="font-medium text-muted-foreground block">Mobile Number</span> {customer.phone}</div>
                 <div><span className="font-medium text-muted-foreground block">Email Address</span> {customer.email || 'N/A'}</div>
                 <div className="col-span-full"><span className="font-medium text-muted-foreground block">Full Address</span> {`${customer.address}, ${customer.city}, ${customer.state} - ${customer.pincode}`}</div>
               </div>
