@@ -2,6 +2,8 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -50,30 +52,42 @@ export default function LoanDetailsPage() {
 
   useEffect(() => {
     if (loanId) {
-      try {
-        const storedLoans = localStorage.getItem('loanApplications');
-        if (storedLoans) {
-          const allLoans = JSON.parse(storedLoans);
-          const foundLoan = allLoans.find((l: Loan) => l.id === loanId);
-          if (foundLoan) {
-             // Check if all EMIs are paid
-            const allPaid = foundLoan.repaymentSchedule?.every((emi: Emi) => emi.status === 'Paid');
-            if (allPaid && foundLoan.status !== 'Completed') {
-              foundLoan.status = 'Completed';
+      const fetchLoan = async () => {
+        setLoading(true);
+        try {
+            const loanRef = doc(db, "loans", loanId);
+            const docSnap = await getDoc(loanRef);
+
+            if (docSnap.exists()) {
+                const loanData = { id: docSnap.id, ...docSnap.data() } as Loan;
+                
+                // Check if all EMIs are paid and update status if needed
+                const allPaid = loanData.repaymentSchedule?.every((emi: Emi) => emi.status === 'Paid');
+                if (allPaid && loanData.status === 'Disbursed') {
+                    loanData.status = 'Completed';
+                    // Persist the status change to Firestore
+                    await updateDoc(loanRef, { status: 'Completed' });
+                }
+                setLoan(loanData);
+            } else {
+                 toast({
+                    variant: "destructive",
+                    title: "Not Found",
+                    description: "No such loan document!",
+                });
             }
-            setLoan(foundLoan);
-          }
+        } catch (error) {
+            console.error("Failed to load loan data:", error);
+            toast({
+                variant: "destructive",
+                title: "Load Failed",
+                description: "Could not load loan details from Firestore.",
+            });
+        } finally {
+            setLoading(false);
         }
-      } catch (error) {
-        console.error("Failed to load loan data:", error);
-        toast({
-          variant: "destructive",
-          title: "Load Failed",
-          description: "Could not load loan details.",
-        });
-      } finally {
-        setLoading(false);
       }
+      fetchLoan();
     }
   }, [loanId, toast]);
 
@@ -273,7 +287,7 @@ export default function LoanDetailsPage() {
         </Button>
         <h1 className="text-2xl font-headline font-semibold">Loan Details</h1>
         <div className="flex items-center gap-2">
-            <Button onClick={handlePrintSchedule} disabled={isPrinting} className="bg-accent text-accent-foreground hover:bg-accent/90">
+            <Button onClick={handlePrintSchedule} disabled={isPrinting || !loan.repaymentSchedule} className="bg-accent text-accent-foreground hover:bg-accent/90">
                 {isPrinting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                 Download Schedule
             </Button>
@@ -355,7 +369,7 @@ export default function LoanDetailsPage() {
                                 </TableCell>
                             </TableRow>
                         )) : (
-                            <TableRow><TableCell colSpan={10} className="h-24 text-center">No repayment schedule found.</TableCell></TableRow>
+                            <TableRow><TableCell colSpan={10} className="h-24 text-center">No repayment schedule generated yet. Loan must be disbursed first.</TableCell></TableRow>
                         )}
                     </TableBody>
                 </Table>

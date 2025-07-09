@@ -1,5 +1,7 @@
 "use client"
 import { useState, useEffect } from "react"
+import { collection, getDocs, query, where, doc, updateDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -7,58 +9,67 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { Check, X } from "lucide-react"
+import { Check, X, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
+interface LoanApplication {
+    id: string;
+    customerName: string;
+    amount: number;
+    date: string;
+    status: string;
+}
 
 export default function ApprovalsPage() {
-    const [applications, setApplications] = useState<any[]>([])
+    const [applications, setApplications] = useState<LoanApplication[]>([])
+    const [loading, setLoading] = useState(true);
     const [comment, setComment] = useState('')
     const { toast } = useToast()
 
-    useEffect(() => {
+    const fetchPendingApplications = async () => {
+        setLoading(true);
         try {
-            const storedApplications = localStorage.getItem('loanApplications')
-            if (storedApplications) {
-                const allApps = JSON.parse(storedApplications)
-                const pendingApps = allApps.filter((app: any) => app.status === 'Pending')
-                setApplications(pendingApps)
-            }
+            const q = query(collection(db, "loans"), where("status", "==", "Pending"));
+            const querySnapshot = await getDocs(q);
+            const pendingApps = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as LoanApplication[];
+            setApplications(pendingApps);
         } catch (error) {
-            console.error("Failed to load loan applications from localStorage:", error)
+            console.error("Failed to load loan applications from Firestore:", error)
             toast({
                 variant: "destructive",
                 title: "Load Failed",
                 description: "Could not load loan applications.",
             })
+        } finally {
+            setLoading(false);
         }
-    }, [toast])
+    };
+    
+    useEffect(() => {
+        fetchPendingApplications();
+    }, []);
 
-    const handleStatusUpdate = (appId: string, newStatus: 'Approved' | 'Rejected') => {
+    const handleStatusUpdate = async (appId: string, newStatus: 'Approved' | 'Rejected') => {
         try {
-            const storedApplications = localStorage.getItem('loanApplications')
-            if (!storedApplications) return
-
-            let allApps = JSON.parse(storedApplications)
+            const loanRef = doc(db, "loans", appId);
             
-            const appIndex = allApps.findIndex((app: any) => app.id === appId)
-            if (appIndex === -1) return
+            const updateData: any = {
+                status: newStatus,
+                comment: comment,
+            };
 
-            allApps[appIndex].status = newStatus
-            allApps[appIndex].comment = comment
             if (newStatus === 'Approved') {
-                allApps[appIndex].approvalDate = new Date().toISOString().split('T')[0];
+                updateData.approvalDate = new Date().toISOString().split('T')[0];
             }
 
-
-            localStorage.setItem('loanApplications', JSON.stringify(allApps))
+            await updateDoc(loanRef, updateData);
             
             setApplications(prev => prev.filter(app => app.id !== appId))
             setComment('') // Reset comment
 
             toast({
                 title: `Application ${newStatus}`,
-                description: `The loan application ${appId} has been successfully ${newStatus.toLowerCase()}.`,
+                description: `The loan application has been successfully ${newStatus.toLowerCase()}.`,
             })
         } catch (error) {
             console.error(`Failed to ${newStatus.toLowerCase()} application:`, error)
@@ -77,7 +88,7 @@ export default function ApprovalsPage() {
         <Card className="shadow-lg">
             <CardHeader>
                 <CardTitle>Pending Applications</CardTitle>
-                <CardDescription>Review and process new loan applications.</CardDescription>
+                <CardDescription>Review and process new loan applications from Firestore.</CardDescription>
             </CardHeader>
             <CardContent>
                 <Table>
@@ -92,7 +103,11 @@ export default function ApprovalsPage() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {applications.length > 0 ? applications.map((app) => (
+                        {loading ? (
+                            <TableRow>
+                                <TableCell colSpan={6} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin" /></TableCell>
+                            </TableRow>
+                        ) : applications.length > 0 ? applications.map((app) => (
                             <TableRow key={app.id}>
                                 <TableCell className="font-medium">{app.id}</TableCell>
                                 <TableCell>{app.customerName}</TableCell>

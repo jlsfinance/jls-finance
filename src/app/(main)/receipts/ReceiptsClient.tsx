@@ -5,34 +5,19 @@ import { useSearchParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
-import { format, parse, isValid } from 'date-fns'
-import { PlusCircle, Download, CalendarIcon, Loader2 } from 'lucide-react'
+import { format } from 'date-fns'
 import jsPDF from 'jspdf'
+import { db } from "@/lib/firebase";
+import { collection, getDocs, addDoc, query, orderBy } from 'firebase/firestore';
 
+import { PlusCircle, Download, CalendarIcon, Loader2 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Calendar } from "@/components/ui/calendar"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
-import { cn } from "@/lib/utils"
-
-// Schema for the manual receipt form
-const receiptSchema = z.object({
-  customerId: z.string({ required_error: "Please select a customer." }).min(1, "Please select a customer."),
-  loanId: z.string({ required_error: "Please select a loan." }).min(1, "Please select a loan."),
-  amount: z.coerce.number().positive("Amount must be a positive number."),
-  emiNumber: z.coerce.number().int().positive("EMI number must be a positive integer."),
-  paymentDate: z.date({ required_error: "Payment date is required." }),
-  paymentMethod: z.enum(["cash", "upi", "bank"], { required_error: "Select a payment method." }),
-  referenceNumber: z.string().optional(),
-});
 
 interface Receipt {
     id: string;
@@ -40,134 +25,35 @@ interface Receipt {
     customerName: string;
     amount: number;
     paymentDate: string;
-    method: string;
+    paymentMethod: string;
+    receiptId: string;
 }
 
 export default function ReceiptsClient() {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
-  const [customers, setCustomers] = useState<any[]>([]);
-  const [loans, setLoans] = useState<any[]>([]);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
-  const searchParams = useSearchParams();
   const [isDownloading, setIsDownloading] = useState<string | null>(null);
 
-
-  const form = useForm<z.infer<typeof receiptSchema>>({
-    resolver: zodResolver(receiptSchema),
-    defaultValues: {
-        customerId: "",
-        loanId: "",
-        amount: 0,
-        emiNumber: 1,
-        paymentDate: new Date(),
-        paymentMethod: "cash",
-        referenceNumber: ""
-    }
-  });
-
-  const selectedCustomerId = form.watch("customerId");
-
-  const customerLoans = useMemo(() => {
-    if (!selectedCustomerId) return [];
-    return loans.filter(loan => loan.customerId === selectedCustomerId && loan.status === 'Disbursed');
-  }, [selectedCustomerId, loans]);
-  
-  useEffect(() => {
-    // Reset loanId when customer changes
-    if (form.getValues("customerId")) {
-      form.resetField("loanId");
-    }
-  }, [selectedCustomerId, form]);
-
-
-  const loadData = useCallback(() => {
+  const loadData = useCallback(async () => {
+    setLoading(true);
     try {
-        // Load paid EMIs from loan applications
-        const storedLoans = localStorage.getItem('loanApplications');
-        const allLoans = storedLoans ? JSON.parse(storedLoans) : [];
-        setLoans(allLoans);
-        
-        const paidEmis: Receipt[] = [];
-        allLoans.forEach((loan: any) => {
-            if (loan.repaymentSchedule) {
-                loan.repaymentSchedule.forEach((emi: any) => {
-                    if (emi.status === 'Paid') {
-                        paidEmis.push({
-                            id: `RCPT-${loan.id}-${emi.emiNumber}`,
-                            loanId: loan.id,
-                            customerName: loan.customerName,
-                            amount: emi.amountPaid || emi.amount,
-                            paymentDate: emi.paymentDate,
-                            method: (emi.paymentMethod || 'N/A').toUpperCase()
-                        });
-                    }
-                });
-            }
-        });
-
-        // Load manual receipts
-        const storedManualReceipts = localStorage.getItem('manualReceipts');
-        const manualReceipts = storedManualReceipts ? JSON.parse(storedManualReceipts) : [];
-        
-        // Combine and sort receipts
-        const allReceipts = [...paidEmis, ...manualReceipts].sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime());
-        setReceipts(allReceipts);
-
-        // Load customers for the form dropdown
-        const storedCustomers = localStorage.getItem('customers');
-        if (storedCustomers) {
-            setCustomers(JSON.parse(storedCustomers));
-        }
-
+        const q = query(collection(db, "receipts"), orderBy("createdAt", "desc"));
+        const querySnapshot = await getDocs(q);
+        const receiptsData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Receipt[];
+        setReceipts(receiptsData);
     } catch (error) {
         console.error("Failed to load receipts:", error);
-        toast({ variant: "destructive", title: "Load Failed", description: "Could not load receipts." });
+        toast({ variant: "destructive", title: "Load Failed", description: "Could not load receipts from Firestore." });
+    } finally {
+        setLoading(false);
     }
   }, [toast]);
 
   useEffect(() => {
     loadData();
-    const action = searchParams.get('action');
-    if (action === 'add') {
-      setIsDialogOpen(true);
-    }
-  }, [loadData, searchParams]);
+  }, [loadData]);
 
-  function onSubmit(values: z.infer<typeof receiptSchema>) {
-    try {
-        const storedManualReceipts = localStorage.getItem('manualReceipts');
-        const manualReceipts = storedManualReceipts ? JSON.parse(storedManualReceipts) : [];
-        
-        const customer = customers.find(c => c.id === values.customerId);
-        if (!customer) throw new Error("Customer not found");
-
-        const newReceipt: Receipt = {
-            id: `MAN-RCPT-${Date.now()}`,
-            loanId: values.loanId,
-            customerName: customer.name,
-            amount: values.amount,
-            paymentDate: format(values.paymentDate, 'yyyy-MM-dd'),
-            method: values.paymentMethod.toUpperCase(),
-        };
-
-        const updatedReceipts = [...manualReceipts, newReceipt];
-        localStorage.setItem('manualReceipts', JSON.stringify(updatedReceipts));
-        
-        toast({
-            title: "Receipt Added!",
-            description: `Manual receipt for ${customer.name} has been added.`
-        });
-
-        form.reset();
-        setIsDialogOpen(false);
-        loadData(); // Reload data to show the new receipt
-
-    } catch (error: any) {
-        console.error("Failed to add receipt:", error);
-        toast({ variant: "destructive", title: "Submission Failed", description: error.message });
-    }
-  }
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 0 }).format(value);
@@ -191,7 +77,7 @@ export default function ReceiptsClient() {
 
         doc.setFontSize(11);
         doc.setFont("helvetica", "normal");
-        doc.text(`Receipt ID: ${receipt.id}`, 14, y);
+        doc.text(`Receipt ID: ${receipt.receiptId}`, 14, y);
         y += 7;
         doc.text(`Payment Date: ${format(new Date(receipt.paymentDate), 'PPP') || 'N/A'}`, 14, y);
         y += 8;
@@ -224,7 +110,7 @@ export default function ReceiptsClient() {
         doc.text(formatCurrency(receipt.amount), 180, y, { align: 'right' });
         y += 13;
 
-        doc.text(`Payment Method: ${receipt.method || 'N/A'}`, 14, y);
+        doc.text(`Payment Method: ${receipt.paymentMethod || 'N/A'}`, 14, y);
 
         doc.setFontSize(10);
         doc.text("This is a computer-generated receipt and does not require a signature.", 105, 280, { align: 'center' });
@@ -247,212 +133,13 @@ export default function ReceiptsClient() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-headline font-semibold">Payment Receipts</h1>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-                <Button className="bg-accent hover:bg-accent/90 text-accent-foreground">
-                    <PlusCircle className="mr-2 h-4 w-4" />
-                    Add Receipt
-                </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[600px]">
-                <DialogHeader>
-                    <DialogTitle>Add Manual Receipt</DialogTitle>
-                    <DialogDescription>
-                        Manually record a payment receipt. This will not affect the EMI schedule.
-                    </DialogDescription>
-                </DialogHeader>
-                <Form {...form}>
-                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
-                        <div className="grid grid-cols-2 gap-4">
-                            <FormField
-                                control={form.control}
-                                name="customerId"
-                                render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Customer</FormLabel>
-                                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                    <FormControl>
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select a customer" />
-                                        </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                        {customers.map((c) => (
-                                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                    </Select>
-                                    <FormMessage />
-                                </FormItem>
-                                )}
-                            />
-                            <FormField
-                                control={form.control}
-                                name="loanId"
-                                render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Loan</FormLabel>
-                                    <Select onValueChange={field.onChange} value={field.value || ""} disabled={!selectedCustomerId}>
-                                    <FormControl>
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select a loan" />
-                                        </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                        {customerLoans.map((l) => (
-                                            <SelectItem key={l.id} value={l.id}>{l.id} - ₹{l.amount.toLocaleString('en-IN')}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                    </Select>
-                                    <FormMessage />
-                                </FormItem>
-                                )}
-                            />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <FormField
-                                control={form.control}
-                                name="amount"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Amount Paid (₹)</FormLabel>
-                                        <FormControl><Input type="number" {...field} value={field.value ?? ""} /></FormControl>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-                            <FormField
-                                control={form.control}
-                                name="emiNumber"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>EMI Number</FormLabel>
-                                        <FormControl><Input type="number" placeholder="e.g. 1" {...field} value={field.value ?? ""} /></FormControl>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-                        </div>
-                         <FormField
-                            control={form.control}
-                            name="paymentDate"
-                            render={({ field }) => {
-                                const [dateString, setDateString] = React.useState<string>(
-                                    field.value ? format(field.value, 'dd/MM/yyyy') : ''
-                                );
-                            
-                                React.useEffect(() => {
-                                    if (field.value) {
-                                        const formattedDate = format(field.value, 'dd/MM/yyyy');
-                                        if (formattedDate !== dateString) {
-                                            setDateString(formattedDate);
-                                        }
-                                    } else {
-                                        setDateString("");
-                                    }
-                                }, [field.value]);
-
-                                const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-                                    const value = e.target.value;
-                                    setDateString(value);
-                                    if (value.length >= 10) {
-                                        const parsedDate = parse(value, 'dd/MM/yyyy', new Date());
-                                        if (isValid(parsedDate)) {
-                                            field.onChange(parsedDate);
-                                        } else {
-                                            field.onChange(undefined);
-                                        }
-                                    }
-                                };
-                                return (
-                                <FormItem>
-                                    <FormLabel>Payment Date</FormLabel>
-                                     <Popover>
-                                        <div className="relative">
-                                            <FormControl>
-                                            <Input
-                                                placeholder="DD/MM/YYYY"
-                                                value={dateString}
-                                                onChange={handleInputChange}
-                                            />
-                                            </FormControl>
-                                            <PopoverTrigger asChild>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2"
-                                                aria-label="Open calendar"
-                                            >
-                                                <CalendarIcon className="h-4 w-4" />
-                                            </Button>
-                                            </PopoverTrigger>
-                                        </div>
-                                        <PopoverContent className="w-auto p-0" align="start">
-                                            <Calendar
-                                                mode="single"
-                                                selected={field.value}
-                                                onSelect={(date) => {
-                                                    field.onChange(date);
-                                                    if (date) {
-                                                        setDateString(format(date, 'dd/MM/yyyy'));
-                                                    }
-                                                }}
-                                                initialFocus
-                                            />
-                                        </PopoverContent>
-                                    </Popover>
-                                    <FormMessage />
-                                </FormItem>
-                                )
-                            }}
-                        />
-                        <FormField
-                            control={form.control}
-                            name="paymentMethod"
-                            render={({ field }) => (
-                                <FormItem className="space-y-3">
-                                <FormLabel>Payment Method</FormLabel>
-                                <FormControl>
-                                    <RadioGroup onValueChange={field.onChange} defaultValue={field.value} className="flex gap-4">
-                                        <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="cash" id="cash" /></FormControl><Label htmlFor="cash">Cash</Label></FormItem>
-                                        <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="upi" id="upi" /></FormControl><Label htmlFor="upi">UPI</Label></FormItem>
-                                        <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="bank" id="bank" /></FormControl><Label htmlFor="bank">Bank Transfer</Label></FormItem>
-                                    </RadioGroup>
-                                </FormControl>
-                                <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-                         <FormField
-                            control={form.control}
-                            name="referenceNumber"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Reference Number (Optional)</FormLabel>
-                                    <FormControl><Input placeholder="e.g. UPI transaction ID" {...field} value={field.value ?? ""} /></FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-                        <DialogFooter>
-                            <DialogClose asChild>
-                                <Button variant="outline">Cancel</Button>
-                            </DialogClose>
-                            <Button type="submit" disabled={form.formState.isSubmitting} className="bg-accent hover:bg-accent/90 text-accent-foreground">
-                                {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Save Receipt
-                            </Button>
-                        </DialogFooter>
-                    </form>
-                </Form>
-            </DialogContent>
-        </Dialog>
+        {/* The "Add Receipt" button is now part of the EMI Collection flow */}
       </div>
 
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>All Receipts</CardTitle>
-          <CardDescription>View and download payment receipts.</CardDescription>
+          <CardDescription>View and download payment receipts from Firestore.</CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
@@ -468,14 +155,20 @@ export default function ReceiptsClient() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {receipts.length > 0 ? receipts.map((receipt) => (
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="h-24 text-center">
+                    <Loader2 className="mx-auto h-8 w-8 animate-spin" />
+                  </TableCell>
+                </TableRow>
+              ) : receipts.length > 0 ? receipts.map((receipt) => (
                 <TableRow key={receipt.id}>
-                  <TableCell className="font-medium">{receipt.id}</TableCell>
+                  <TableCell className="font-medium">{receipt.receiptId}</TableCell>
                   <TableCell>{receipt.customerName}</TableCell>
                   <TableCell>{receipt.loanId}</TableCell>
                   <TableCell>₹{receipt.amount.toLocaleString('en-IN')}</TableCell>
                   <TableCell>{receipt.paymentDate}</TableCell>
-                  <TableCell>{receipt.method}</TableCell>
+                  <TableCell>{receipt.paymentMethod}</TableCell>
                   <TableCell className="text-center">
                     <Button variant="outline" size="sm" onClick={() => handleDownloadReceipt(receipt)} disabled={isDownloading === receipt.id}>
                       {isDownloading === receipt.id ? (

@@ -1,12 +1,14 @@
 "use client"
 import { useState, useEffect } from "react"
+import { collection, getDocs, query, where, doc, updateDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useToast } from "@/hooks/use-toast"
-import { Banknote, CalendarIcon } from "lucide-react"
+import { Banknote, CalendarIcon, Loader2 } from "lucide-react"
 import { addMonths, startOfMonth, format, parse, isValid } from 'date-fns'
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
@@ -14,28 +16,42 @@ import { cn } from "@/lib/utils"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 
+interface ApprovedLoan {
+    id: string;
+    customerName: string;
+    amount: number;
+    approvalDate?: string;
+    tenure: number;
+    emi: number;
+}
+
 export default function DisbursalPage() {
-    const [approvedLoans, setApprovedLoans] = useState<any[]>([])
+    const [approvedLoans, setApprovedLoans] = useState<ApprovedLoan[]>([])
+    const [loading, setLoading] = useState(true);
     const [selectedDisbursalDate, setSelectedDisbursalDate] = useState<Date | undefined>(new Date())
     const [disbursalDateString, setDisbursalDateString] = useState<string>(format(new Date(), 'dd/MM/yyyy'));
     const { toast } = useToast()
 
     useEffect(() => {
-        try {
-            const storedApplications = localStorage.getItem('loanApplications')
-            if (storedApplications) {
-                const allApps = JSON.parse(storedApplications)
-                const pendingDisbursal = allApps.filter((app: any) => app.status === 'Approved')
-                setApprovedLoans(pendingDisbursal)
+        const fetchApprovedLoans = async () => {
+            setLoading(true);
+            try {
+                const q = query(collection(db, "loans"), where("status", "==", "Approved"));
+                const querySnapshot = await getDocs(q);
+                const approved = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ApprovedLoan[];
+                setApprovedLoans(approved);
+            } catch (error) {
+                console.error("Failed to load approved loans from Firestore:", error)
+                toast({
+                    variant: "destructive",
+                    title: "Load Failed",
+                    description: "Could not load approved loans for disbursal.",
+                })
+            } finally {
+                setLoading(false);
             }
-        } catch (error) {
-            console.error("Failed to load approved loans from localStorage:", error)
-            toast({
-                variant: "destructive",
-                title: "Load Failed",
-                description: "Could not load approved loans for disbursal.",
-            })
-        }
+        };
+        fetchApprovedLoans();
     }, [toast])
     
     useEffect(() => {
@@ -47,7 +63,7 @@ export default function DisbursalPage() {
         } else {
             setDisbursalDateString("");
         }
-    }, [selectedDisbursalDate]);
+    }, [selectedDisbursalDate, disbursalDateString]);
 
     const handleDisbursalDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value;
@@ -62,7 +78,7 @@ export default function DisbursalPage() {
         }
     };
 
-    const handleDisburse = (appId: string) => {
+    const handleDisburse = async (appId: string, loan: ApprovedLoan) => {
         if (!selectedDisbursalDate) {
             toast({
                 variant: "destructive",
@@ -73,20 +89,9 @@ export default function DisbursalPage() {
         }
 
         try {
-            const storedApplications = localStorage.getItem('loanApplications')
-            if (!storedApplications) return
+            const loanRef = doc(db, "loans", appId);
 
-            let allApps = JSON.parse(storedApplications)
-            
-            const appIndex = allApps.findIndex((app: any) => app.id === appId)
-            if (appIndex === -1) return
-
-            const loan = allApps[appIndex];
-            
-            loan.status = 'Disbursed'
-            loan.disbursalDate = format(selectedDisbursalDate, 'yyyy-MM-dd')
-
-            // Generate EMI schedule based on the selected disbursal date
+            // Generate EMI schedule
             const repaymentSchedule = [];
             const firstEmiDate = startOfMonth(addMonths(selectedDisbursalDate, 1));
             for (let i = 0; i < loan.tenure; i++) {
@@ -94,21 +99,21 @@ export default function DisbursalPage() {
                     emiNumber: i + 1,
                     dueDate: format(addMonths(firstEmiDate, i), 'yyyy-MM-dd'),
                     amount: loan.emi,
-                    status: 'Pending' // EMI payment status
+                    status: 'Pending'
                 });
             }
-            loan.repaymentSchedule = repaymentSchedule;
             
-            allApps[appIndex] = loan;
-
-
-            localStorage.setItem('loanApplications', JSON.stringify(allApps))
+            await updateDoc(loanRef, {
+                status: 'Disbursed',
+                disbursalDate: format(selectedDisbursalDate, 'yyyy-MM-dd'),
+                repaymentSchedule: repaymentSchedule
+            });
             
             setApprovedLoans(prev => prev.filter(app => app.id !== appId))
 
             toast({
                 title: `Loan Disbursed`,
-                description: `The loan ${appId} has been successfully disbursed and EMI schedule generated.`,
+                description: `The loan for ${loan.customerName} has been disbursed.`,
             })
         } catch (error) {
             console.error(`Failed to disburse loan:`, error)
@@ -126,7 +131,7 @@ export default function DisbursalPage() {
         <Card className="shadow-lg">
             <CardHeader>
                 <CardTitle>Approved Loans</CardTitle>
-                <CardDescription>Review and disburse approved loan applications.</CardDescription>
+                <CardDescription>Review and disburse approved loan applications from Firestore.</CardDescription>
             </CardHeader>
             <CardContent>
                 <Table>
@@ -141,7 +146,11 @@ export default function DisbursalPage() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {approvedLoans.length > 0 ? approvedLoans.map((app) => (
+                        {loading ? (
+                             <TableRow>
+                                <TableCell colSpan={6} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin" /></TableCell>
+                            </TableRow>
+                        ) : approvedLoans.length > 0 ? approvedLoans.map((app) => (
                             <TableRow key={app.id}>
                                 <TableCell className="font-medium">{app.id}</TableCell>
                                 <TableCell>{app.customerName}</TableCell>
@@ -212,7 +221,7 @@ export default function DisbursalPage() {
                                                     <Button variant="outline">Cancel</Button>
                                                 </DialogClose>
                                                 <DialogClose asChild>
-                                                    <Button className="bg-accent hover:bg-accent/90 text-accent-foreground" onClick={() => handleDisburse(app.id)} disabled={!selectedDisbursalDate}>Confirm Disbursal</Button>
+                                                    <Button className="bg-accent hover:bg-accent/90 text-accent-foreground" onClick={() => handleDisburse(app.id, app)} disabled={!selectedDisbursalDate}>Confirm Disbursal</Button>
                                                 </DialogClose>
                                             </DialogFooter>
                                         </DialogContent>

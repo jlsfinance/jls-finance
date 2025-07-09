@@ -1,5 +1,7 @@
 "use client"
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { db } from "@/lib/firebase";
+import { collection, query, where, getDocs } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -12,8 +14,8 @@ import { useToast } from "@/hooks/use-toast";
 interface DueEmi {
     customerId: string;
     customerName: string;
-    fatherName: string;
-    mobile: string;
+    fatherName: string; // This might not be available on the loan doc directly
+    mobile: string; // This will require fetching customer doc
     emiAmount: number;
     emiNumber: string;
     loanId: string;
@@ -26,42 +28,42 @@ export default function MonthlyDueListPage() {
     const [reportMonth, setReportMonth] = useState<Date>(startOfMonth(new Date()));
     const { toast } = useToast();
 
-    useEffect(() => {
+    const fetchDueEmis = useCallback(async () => {
         setLoading(true);
         try {
-            const storedLoans = localStorage.getItem('loanApplications');
-            const storedCustomers = localStorage.getItem('customers');
+            // Fetch all disbursed loans
+            const loansQuery = query(collection(db, "loans"), where("status", "==", "Disbursed"));
+            const loansSnapshot = await getDocs(loansQuery);
 
-            if (!storedLoans || !storedCustomers) {
-                setLoading(false);
-                return;
-            }
+            // Fetch all customers to map details later
+            const customersSnapshot = await getDocs(collection(db, "customers"));
+            const customersMap = new Map(customersSnapshot.docs.map(doc => [doc.id, doc.data()]));
 
-            const allLoans = JSON.parse(storedLoans);
-            const allCustomers = JSON.parse(storedCustomers);
-
-            const disbursedLoans = allLoans.filter((l: any) => l.status === 'Disbursed' && l.repaymentSchedule);
-            
             const dueItems: DueEmi[] = [];
-            
-            // Note: date-fns startOfMonth returns a date at the start of the day.
-            // We need to find due dates that fall on the first of the selected month.
             const monthStr = format(reportMonth, 'yyyy-MM');
 
-            disbursedLoans.forEach((loan: any) => {
-                const dueEmi = loan.repaymentSchedule.find((emi: any) => emi.status === 'Pending' && emi.dueDate.startsWith(monthStr));
-                if (dueEmi && new Date(dueEmi.dueDate).getDate() === 1) {
-                     const customer = allCustomers.find((c: any) => c.id === loan.customerId);
-                    if (customer) {
-                        dueItems.push({
-                            customerId: customer.id,
-                            customerName: customer.name,
-                            fatherName: customer.fatherName,
-                            mobile: customer.mobile,
-                            emiAmount: dueEmi.amount,
-                            emiNumber: `${dueEmi.emiNumber}/${loan.tenure}`,
-                            loanId: loan.id,
-                        });
+            loansSnapshot.forEach((loanDoc) => {
+                const loan = loanDoc.data();
+                if (loan.repaymentSchedule) {
+                    const dueEmi = loan.repaymentSchedule.find((emi: any) => 
+                        emi.status === 'Pending' && 
+                        emi.dueDate.startsWith(monthStr) && 
+                        new Date(emi.dueDate).getDate() === 1
+                    );
+
+                    if (dueEmi) {
+                        const customer = customersMap.get(loan.customerId);
+                        if (customer) {
+                            dueItems.push({
+                                customerId: loan.customerId,
+                                customerName: customer.name,
+                                fatherName: customer.guarantor?.name || 'N/A', // Assuming guarantor name as father name for now
+                                mobile: customer.mobile,
+                                emiAmount: dueEmi.amount,
+                                emiNumber: `${dueEmi.emiNumber}/${loan.tenure}`,
+                                loanId: loanDoc.id,
+                            });
+                        }
                     }
                 }
             });
@@ -74,12 +76,16 @@ export default function MonthlyDueListPage() {
             toast({
                 variant: "destructive",
                 title: "Load Failed",
-                description: "Could not load due EMI list.",
+                description: "Could not load due EMI list from Firestore.",
             });
         } finally {
             setLoading(false);
         }
     }, [reportMonth, toast]);
+    
+    useEffect(() => {
+        fetchDueEmis();
+    }, [fetchDueEmis]);
 
     const handlePrint = async () => {
         if (dueEmis.length === 0) return;
@@ -88,19 +94,16 @@ export default function MonthlyDueListPage() {
         try {
             const doc = new jsPDF();
             
-            // Add company name header
             doc.setFontSize(16);
             doc.setFont("helvetica", "bold");
             doc.text('JLS FINANCE LTD', doc.internal.pageSize.getWidth() / 2, 15, { align: 'center' });
 
-            // Add report title and details
             doc.setFontSize(14);
             doc.setFont("helvetica", "normal");
             doc.text(`EMI Due List - ${format(reportMonth, 'MMMM yyyy')}`, doc.internal.pageSize.getWidth() / 2, 25, { align: 'center' });
             
             doc.setFontSize(10);
             doc.text(`Report Date: ${format(new Date(), 'PPP')}`, 15, 35);
-            doc.text('Branch: Main Branch', doc.internal.pageSize.getWidth() - 15, 35, { align: 'right' });
 
             const tableColumn = ["Sr. No.", "Customer Name", "Spouse/Father Name", "Mobile Number", "EMI Amount (₹)", "EMI No.", "Loan ID", "Remarks"];
             const tableRows: (string | number)[][] = [];
@@ -114,7 +117,7 @@ export default function MonthlyDueListPage() {
                     `₹${emi.emiAmount.toLocaleString('en-IN')}`,
                     emi.emiNumber,
                     emi.loanId,
-                    '' // Remarks column is empty
+                    ''
                 ];
                 tableRows.push(emiData);
             });
@@ -124,23 +127,16 @@ export default function MonthlyDueListPage() {
                 body: tableRows,
                 startY: 45,
                 theme: 'grid',
-                headStyles: { fillColor: [46, 154, 254] }, // Primary color
+                headStyles: { fillColor: [46, 154, 254] },
                 styles: { font: "helvetica", fontSize: 9 },
             });
             
             doc.save(`Due_EMIs_${format(reportMonth, 'yyyy-MM')}.pdf`);
-            toast({
-                title: "Download Successful",
-                description: "Due EMI List PDF downloaded successfully!",
-            });
+            toast({ title: "Download Successful", description: "Due EMI List PDF downloaded successfully!" });
 
         } catch (error) {
             console.error("Failed to generate PDF:", error);
-            toast({
-                variant: "destructive",
-                title: "Download Failed",
-                description: "Could not generate the PDF.",
-            });
+            toast({ variant: "destructive", title: "Download Failed", description: "Could not generate the PDF." });
         } finally {
             setIsPrinting(false);
         }
@@ -190,7 +186,7 @@ export default function MonthlyDueListPage() {
                             </TableHeader>
                             <TableBody>
                                 {loading ? (
-                                    <TableRow><TableCell colSpan={8} className="text-center h-24">Loading due EMIs...</TableCell></TableRow>
+                                    <TableRow><TableCell colSpan={8} className="text-center h-24"><Loader2 className="h-8 w-8 animate-spin" /></TableCell></TableRow>
                                 ) : dueEmis.length > 0 ? (
                                     dueEmis.map((emi, index) => (
                                         <TableRow key={`${emi.loanId}-${emi.emiNumber}`}>

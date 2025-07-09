@@ -1,20 +1,14 @@
 "use client"
-
+import { useEffect, useState } from "react"
+import { collection, getDocs, query, where } from "firebase/firestore"
+import { db } from "@/lib/firebase"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { DollarSign, Users, FileText, CheckCircle, Clock } from "lucide-react"
+import { DollarSign, Users, FileText, CheckCircle, Clock, Loader2 } from "lucide-react"
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from "@/components/ui/chart"
 import { Bar, BarChart, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from "recharts"
-
-const chartData = [
-  { month: "January", applications: 186, approved: 80 },
-  { month: "February", applications: 305, approved: 200 },
-  { month: "March", applications: 237, approved: 120 },
-  { month: "April", applications: 273, approved: 190 },
-  { month: "May", applications: 209, approved: 130 },
-  { month: "June", applications: 214, approved: 140 },
-]
+import { format, subMonths, getMonth, getYear } from 'date-fns'
 
 const chartConfig = {
   applications: {
@@ -27,15 +21,101 @@ const chartConfig = {
   },
 }
 
-const recentApplications = [
-  { id: "LN001", name: "John Doe", amount: "₹50,000", status: "Approved" },
-  { id: "LN002", name: "Jane Smith", amount: "₹1,20,000", status: "Pending" },
-  { id: "LN003", name: "Sam Wilson", amount: "₹25,000", status: "Approved" },
-  { id: "LN004", name: "Alice Brown", amount: "₹3,00,000", status: "Rejected" },
-  { id: "LN005", name: "Bob Johnson", amount: "₹75,000", status: "Pending" },
-]
+interface Stats {
+    totalDisbursed: number;
+    activeLoans: number;
+    totalCustomers: number;
+    totalCollectionsToday: number;
+}
+interface Loan {
+    id: string;
+    customerName: string;
+    amount: number;
+    status: string;
+    date: string;
+}
 
 export default function DashboardPage() {
+    const [stats, setStats] = useState<Stats>({
+        totalDisbursed: 0,
+        activeLoans: 0,
+        totalCustomers: 0,
+        totalCollectionsToday: 0
+    });
+    const [recentApplications, setRecentApplications] = useState<Loan[]>([]);
+    const [chartData, setChartData] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                // Fetch Customers
+                const customersSnapshot = await getDocs(collection(db, "customers"));
+                const totalCustomers = customersSnapshot.size;
+
+                // Fetch Loans
+                const loansSnapshot = await getDocs(collection(db, "loans"));
+                const loansData = loansSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
+                
+                const totalDisbursed = loansData
+                    .filter(loan => loan.status === 'Disbursed')
+                    .reduce((sum, loan) => sum + loan.amount, 0);
+
+                const activeLoans = loansData.filter(loan => loan.status === 'Disbursed').length;
+
+                // Recent applications
+                const sortedLoans = loansData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                setRecentApplications(sortedLoans.slice(0, 5));
+
+                // Chart Data (last 6 months)
+                const monthlyData: { [key: string]: { applications: number; approved: number } } = {};
+                const now = new Date();
+
+                for (let i = 5; i >= 0; i--) {
+                    const d = subMonths(now, i);
+                    const monthKey = format(d, 'yyyy-MM');
+                    monthlyData[monthKey] = { applications: 0, approved: 0 };
+                }
+
+                loansData.forEach(loan => {
+                    const loanDate = new Date(loan.date);
+                    const monthKey = format(loanDate, 'yyyy-MM');
+                    if (monthlyData[monthKey]) {
+                        monthlyData[monthKey].applications++;
+                        if (loan.status === 'Approved' || loan.status === 'Disbursed' || loan.status === 'Completed') {
+                            monthlyData[monthKey].approved++;
+                        }
+                    }
+                });
+
+                const finalChartData = Object.entries(monthlyData).map(([month, data]) => ({
+                    month: format(new Date(month), 'MMM'),
+                    ...data
+                }));
+                setChartData(finalChartData);
+
+                // For simplicity, total collections today is mocked. A real implementation would query a 'collections' collection by date.
+                const totalCollectionsToday = Math.floor(Math.random() * 200000);
+
+                setStats({ totalDisbursed, activeLoans, totalCustomers, totalCollectionsToday });
+
+            } catch (error) {
+                console.error("Error fetching dashboard data: ", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+    }, []);
+
+    const formatCurrency = (value: number) => `₹${value.toLocaleString('en-IN')}`;
+
+    if (loading) {
+        return <div className="flex justify-center items-center h-full"><Loader2 className="w-10 h-10 animate-spin" /></div>
+    }
+
   return (
     <div className="flex flex-col gap-8">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -45,8 +125,8 @@ export default function DashboardPage() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">₹45,23,189</div>
-            <p className="text-xs text-muted-foreground">+20.1% from last month</p>
+            <div className="text-2xl font-bold">{formatCurrency(stats.totalDisbursed)}</div>
+            <p className="text-xs text-muted-foreground">Across all active loans</p>
           </CardContent>
         </Card>
         <Card className="shadow-md">
@@ -55,8 +135,8 @@ export default function DashboardPage() {
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">+2350</div>
-            <p className="text-xs text-muted-foreground">+180.1% from last month</p>
+            <div className="text-2xl font-bold">+{stats.activeLoans.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">Currently being repaid</p>
           </CardContent>
         </Card>
         <Card className="shadow-md">
@@ -65,8 +145,8 @@ export default function DashboardPage() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">+12,234</div>
-            <p className="text-xs text-muted-foreground">+19% from last month</p>
+            <div className="text-2xl font-bold">+{stats.totalCustomers.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">Registered in the system</p>
           </CardContent>
         </Card>
         <Card className="shadow-md">
@@ -75,8 +155,8 @@ export default function DashboardPage() {
             <CheckCircle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">₹1,25,340</div>
-            <p className="text-xs text-muted-foreground">+5% from yesterday</p>
+            <div className="text-2xl font-bold">{formatCurrency(stats.totalCollectionsToday)}</div>
+            <p className="text-xs text-muted-foreground">(Mock data)</p>
           </CardContent>
         </Card>
       </div>
@@ -85,7 +165,7 @@ export default function DashboardPage() {
         <Card className="shadow-md">
           <CardHeader>
             <CardTitle>Loan Applications Overview</CardTitle>
-            <CardDescription>Monthly loan applications and approvals.</CardDescription>
+            <CardDescription>Last 6 months.</CardDescription>
           </CardHeader>
           <CardContent>
             <ChartContainer config={chartConfig} className="h-[300px] w-full">
@@ -112,23 +192,23 @@ export default function DashboardPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Loan ID</TableHead>
                   <TableHead>Customer</TableHead>
                   <TableHead>Amount</TableHead>
+                  <TableHead>Date</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {recentApplications.map((app) => (
                   <TableRow key={app.id}>
-                    <TableCell className="font-medium">{app.id}</TableCell>
-                    <TableCell>{app.name}</TableCell>
-                    <TableCell>{app.amount}</TableCell>
+                    <TableCell className="font-medium">{app.customerName}</TableCell>
+                    <TableCell>{formatCurrency(app.amount)}</TableCell>
+                    <TableCell>{app.date}</TableCell>
                     <TableCell>
                       <Badge variant={
-                        app.status === "Approved" ? "default" : app.status === "Pending" ? "secondary" : "destructive"
+                        app.status === "Approved" || app.status === "Disbursed" ? "default" : app.status === "Pending" ? "secondary" : "destructive"
                       } className={
-                        app.status === "Approved" ? "bg-accent text-accent-foreground" : ""
+                        (app.status === "Approved" || app.status === "Disbursed") ? "bg-accent text-accent-foreground" : ""
                       }>
                         {app.status}
                       </Badge>
