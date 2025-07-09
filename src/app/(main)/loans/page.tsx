@@ -14,6 +14,25 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+const formatCurrency = (value: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(value);
+
+const addPdfSection = (doc: jsPDF, startY: number, title: string, details: { [key: string]: any }) => {
+  let y = startY;
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "bold");
+  doc.text(title, 14, y);
+  y += 7;
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  Object.entries(details).forEach(([key, value]) => {
+    doc.text(`${key}:`, 20, y);
+    doc.text(String(value || 'N/A'), 70, y);
+    y += 6;
+  });
+  y += 4;
+  return y; // Return the new Y position
+};
+
 export default function LoansPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [loans, setLoans] = useState<any[]>([]);
@@ -77,8 +96,6 @@ export default function LoansPage() {
       }
   }
 
-  const formatCurrency = (value: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(value);
-
   const generateLoanAgreement = async (loan: any) => {
     setIsDialogOpen(true);
     setIsGeneratingPdf(true);
@@ -86,6 +103,8 @@ export default function LoansPage() {
     setCurrentPdfName(`Loan_Agreement_${loan.id}.pdf`);
 
     try {
+      const doc = new jsPDF();
+
       const customerRef = doc(db, "customers", loan.customerId);
       const customerSnap = await getDoc(customerRef);
       if (!customerSnap.exists()) {
@@ -93,7 +112,6 @@ export default function LoansPage() {
       }
       const customer = customerSnap.data();
 
-      const doc = new jsPDF();
       let y = 20;
 
       doc.setFontSize(18);
@@ -103,11 +121,10 @@ export default function LoansPage() {
       doc.setFontSize(14);
       doc.setFont("helvetica", "normal");
       doc.text("Loan Agreement", 105, y, { align: 'center' });
-      y += 15;
-
+      
       if (customer.photo_url) {
         try {
-            const response = await fetch(customer.photo_url);
+            const response = await fetch(`https://images.weserv.nl/?url=${encodeURIComponent(customer.photo_url)}`);
             const blob = await response.blob();
             const reader = new FileReader();
             const imgData = await new Promise<string>((resolve, reject) => {
@@ -120,34 +137,19 @@ export default function LoansPage() {
             console.error("Failed to add image to PDF:", e);
         }
       }
+      y += 25; // Adjust y-position to account for header and potential photo
 
-
-      const addSection = (title: string, details: { [key: string]: any }) => {
-        doc.setFontSize(12);
-        doc.setFont("helvetica", "bold");
-        doc.text(title, 14, y);
-        y += 7;
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "normal");
-        Object.entries(details).forEach(([key, value]) => {
-          doc.text(`${key}:`, 20, y);
-          doc.text(String(value || 'N/A'), 60, y);
-          y += 6;
-        });
-        y += 4;
-      };
-
-      addSection("Customer Details", { "Full Name": customer.name, "Address": customer.address });
-      addSection("KYC Details", { "Aadhaar": customer.aadhaar, "PAN": customer.pan, "Voter ID": customer.voter_id });
+      y = addPdfSection(doc, y, "Customer Details", { "Full Name": customer.name, "Address": customer.address });
+      y = addPdfSection(doc, y, "KYC Details", { "Aadhaar": customer.aadhaar, "PAN": customer.pan, "Voter ID": customer.voter_id });
       if (customer.guarantor?.name) {
-          addSection("Guarantor Details", {
+          y = addPdfSection(doc, y, "Guarantor Details", {
               "Name": customer.guarantor.name,
               "Address": customer.guarantor.address,
               "Mobile": customer.guarantor.mobile,
               "Relation": customer.guarantor.relation
           });
       }
-      addSection("Loan Information", {
+      y = addPdfSection(doc, y, "Loan Information", {
         "Loan ID": loan.id,
         "Loan Amount": formatCurrency(loan.amount),
         "Interest Rate": `${loan.interestRate}% p.a.`,
@@ -169,8 +171,9 @@ export default function LoansPage() {
           "4. This agreement is digitally executed and is legally binding."
       ];
       terms.forEach(term => {
-          doc.text(term, 20, y, { maxWidth: 170 });
-          y += 5;
+          const splitText = doc.splitTextToSize(term, 170);
+          doc.text(splitText, 20, y);
+          y += (splitText.length * 4) + 2;
       });
       y += 20;
 
@@ -199,11 +202,11 @@ export default function LoansPage() {
     setCurrentPdfName(`Loan_Card_${loan.id}.pdf`);
     
     try {
+        const doc = new jsPDF();
         const customerRef = doc(db, "customers", loan.customerId);
         const customerSnap = await getDoc(customerRef);
         const customer = customerSnap.exists() ? customerSnap.data() : null;
 
-        const doc = new jsPDF();
         let y = 20;
         doc.setFontSize(16);
         doc.setFont("helvetica", "bold");
@@ -212,7 +215,7 @@ export default function LoansPage() {
         
         if (customer?.photo_url) {
             try {
-                const response = await fetch(customer.photo_url);
+                const response = await fetch(`https://images.weserv.nl/?url=${encodeURIComponent(customer.photo_url)}`);
                 const blob = await response.blob();
                 const reader = new FileReader();
                 const imgData = await new Promise<string>((resolve, reject) => {

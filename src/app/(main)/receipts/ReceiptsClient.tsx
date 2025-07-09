@@ -59,12 +59,12 @@ export default function ReceiptsClient() {
     setIsDownloading(receipt.id);
     try {
         const doc = new jsPDF();
-        let y = 15;
-
+        
         // Fetch customer data for photo
         const customerRef = doc(db, "customers", receipt.customerId);
         const customerSnap = await getDoc(customerRef);
         
+        let y = 15;
         doc.setFontSize(16);
         doc.setFont("helvetica", "bold");
         doc.text("JLS FINANCE LTD", 105, y, { align: 'center' });
