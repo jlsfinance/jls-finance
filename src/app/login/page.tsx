@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -9,7 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { auth, db, isFirebaseInitialized } from "@/lib/firebase";
 import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -64,30 +63,13 @@ export default function LoginPage() {
     }
     setLoading(true);
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
-      const user = userCredential.user;
-
-      const userDocRef = doc(db, "users", user.uid);
-      const userDoc = await getDoc(userDocRef);
-
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        // Store user info in localStorage for session management
-        localStorage.setItem('user', JSON.stringify({
-            uid: user.uid,
-            email: user.email,
-            name: userData.name,
-            role: userData.role,
-        }));
-        
-        toast({
+      await signInWithEmailAndPassword(auth, data.email, data.password);
+      // The AuthProvider will handle fetching user data and redirecting.
+      toast({
             title: "Login Successful",
-            description: `Welcome back, ${userData.name}!`,
-        });
-        router.push('/dashboard');
-      } else {
-        throw new Error("User data not found in Firestore.");
-      }
+            description: `Welcome back!`,
+      });
+      router.push('/dashboard');
     } catch (error: any) {
         toast({
             variant: "destructive",
@@ -112,10 +94,8 @@ export default function LoginPage() {
         const userDocRef = doc(db, "users", user.uid);
         const userDoc = await getDoc(userDocRef);
 
-        let userData;
-
         if (userDoc.exists()) {
-            userData = userDoc.data();
+            const userData = userDoc.data();
             if (userData.role !== 'customer') {
                 await signOut(auth); // Important: sign out non-customer
                 toast({
@@ -126,20 +106,11 @@ export default function LoginPage() {
                 setGoogleLoading(false);
                 return;
             }
-        } else {
-            // New user, create their document with 'customer' role
-            userData = {
-                uid: user.uid,
-                name: user.displayName,
-                email: user.email,
-                role: 'customer',
-                createdAt: new Date().toISOString(),
-            };
-            await setDoc(userDocRef, userData);
-        }
+        } 
+        // Note: New user creation is now handled by the AuthProvider
+        // if the document doesn't exist.
 
-        localStorage.setItem('user', JSON.stringify(userData));
-        toast({ title: "Login Successful", description: `Welcome, ${userData.name}!` });
+        toast({ title: "Login Successful", description: `Welcome!` });
         router.push('/dashboard');
 
     } catch (error: any) {

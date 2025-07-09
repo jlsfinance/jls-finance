@@ -1,11 +1,11 @@
-
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
 import { signOut } from "firebase/auth";
+import { useAuth } from "@/context/AuthContext";
 
 import {
   SidebarProvider,
@@ -43,47 +43,37 @@ import {
   Banknote,
   ListChecks,
   Receipt,
+  UserCog,
 } from "lucide-react";
 
 import { FloatingActionButton } from "./FloatingActionButton";
 import { useToast } from "@/hooks/use-toast";
 
-const menuItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/customers", label: "Customers", icon: Users },
-  { href: "/loans", label: "All Loans", icon: ListChecks },
-  { href: "/reports", label: "Reports", icon: BarChart3 },
-  { href: "/customers/new", label: "KYC Registration", icon: FileText },
-  { href: "/loans/new", label: "Loan Application", icon: HandCoins },
-  { href: "/admin/approvals", label: "Loan Approvals", icon: Gavel },
-  { href: "/admin/disbursal", label: "Loan Disbursal", icon: Banknote },
-  { href: "/collections/due-list", label: "EMI Collection", icon: BookCheck },
-  { href: "/emi-calculator", label: "EMI Calculator", icon: Calculator },
-  { href: "/receipts", label: "Receipts", icon: Receipt },
-  { href: "/settings", label: "Settings", icon: Settings },
+const allMenuItems = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ['admin', 'agent', 'customer'] },
+  { href: "/customers", label: "Customers", icon: Users, roles: ['admin', 'agent'] },
+  { href: "/loans", label: "All Loans", icon: ListChecks, roles: ['admin', 'agent'] },
+  { href: "/reports", label: "Reports", icon: BarChart3, roles: ['admin'] },
+  { href: "/customers/new", label: "KYC Registration", icon: FileText, roles: ['admin', 'agent'] },
+  { href: "/loans/new", label: "Loan Application", icon: HandCoins, roles: ['admin', 'agent'] },
+  { href: "/admin/approvals", label: "Loan Approvals", icon: Gavel, roles: ['admin'] },
+  { href: "/admin/disbursal", label: "Loan Disbursal", icon: Banknote, roles: ['admin'] },
+  { href: "/admin/users", label: "User Management", icon: UserCog, roles: ['admin'] },
+  { href: "/collections/due-list", label: "EMI Collection", icon: BookCheck, roles: ['admin', 'agent'] },
+  { href: "/emi-calculator", label: "EMI Calculator", icon: Calculator, roles: ['admin', 'agent', 'customer'] },
+  { href: "/receipts", label: "Receipts", icon: Receipt, roles: ['admin', 'agent'] },
+  { href: "/settings", label: "Settings", icon: Settings, roles: ['admin'] },
 ];
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
-  const [user, setUser] = useState<{ name: string } | null>(null);
-
-  useEffect(() => {
-    try {
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
-            setUser(JSON.parse(storedUser));
-        }
-    } catch(e) {
-        // Silently fail if localStorage is not available or parsing fails
-    }
-  }, []);
-
+  const { user } = useAuth();
+  
   const handleLogout = async () => {
     try {
       await signOut(auth);
-      localStorage.removeItem('user');
       toast({
           title: "Logged Out",
           description: "You have been successfully logged out.",
@@ -97,6 +87,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       });
     }
   };
+  
+  const menuItems = allMenuItems.filter(item => user && item.roles.includes(user.role));
 
   return (
     <SidebarProvider>

@@ -1,42 +1,22 @@
 "use client"
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2 } from 'lucide-react';
-import { auth, isFirebaseInitialized } from '@/lib/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
-import { FirebaseNotConfigured } from './FirebaseNotConfigured';
+import { useAuth } from '@/context/AuthContext';
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
-
-  if (!isFirebaseInitialized) {
-    return <FirebaseNotConfigured />;
-  }
 
   useEffect(() => {
-    // Auth object is guaranteed to be available if isFirebaseInitialized is true
-    const unsubscribe = onAuthStateChanged(auth!, (user) => {
-      if (user) {
-        // User is signed in.
-        // You could also fetch user role from Firestore here if needed.
-        setLoading(false);
-      } else {
-        // User is signed out.
-        router.push('/login');
-      }
-    });
+    if (!loading && !user) {
+      router.push('/login');
+    }
+  }, [user, loading, router]);
 
-    // Cleanup subscription on unmount
-    return () => unsubscribe();
-  }, [router]);
-
-  if (loading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-background">
-        <Loader2 className="h-10 w-10 animate-spin text-primary" />
-      </div>
-    );
+  if (loading || !user) {
+    // The loading spinner is already handled by AuthProvider, 
+    // so we can just return null or a minimal loader here to avoid layout shifts.
+    return null;
   }
 
   return <>{children}</>;
