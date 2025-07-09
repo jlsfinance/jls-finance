@@ -1,3 +1,4 @@
+
 "use client";
 
 import React from "react";
@@ -57,7 +58,7 @@ const allMenuItems = [
   { href: "/loans/new", label: "Loan Application", icon: HandCoins, roles: ['admin', 'agent'] },
   { href: "/admin/approvals", label: "Loan Approvals", icon: Gavel, roles: ['admin'] },
   { href: "/admin/disbursal", label: "Loan Disbursal", icon: Banknote, roles: ['admin'] },
-  { href: "/admin/users", label: "User Management", icon: UserCog, roles: ['admin'] },
+  { href: "/admin/settings", label: "Admin Settings", icon: UserCog, roles: ['admin'] },
   { href: "/collections/due-list", label: "EMI Collection", icon: BookCheck, roles: ['admin', 'agent'] },
   { href: "/emi-calculator", label: "EMI Calculator", icon: Calculator, roles: ['admin', 'agent', 'customer'] },
   { href: "/receipts", label: "Receipts", icon: Receipt, roles: ['admin', 'agent'] },
