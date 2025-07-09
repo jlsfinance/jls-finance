@@ -97,7 +97,7 @@ export default function LoanDetailsPage() {
   const dueEmisCount = (loan?.tenure || 0) - paidEmisCount;
 
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 0 }).format(value);
+    return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 2 }).format(value);
   };
   
   const getStatusBadge = (status: string) => {
@@ -391,7 +391,7 @@ export default function LoanDetailsPage() {
                                 <TableCell>{emi.paymentDate}</TableCell>
                                 <TableCell>
                                   <Badge variant={emi.status === 'Paid' ? 'default' : 'outline'} className={emi.status === 'Paid' ? 'bg-accent text-accent-foreground' : ''}>
-                                      {emi.status}
+                                      {emi.status === 'Paid' ? '✅ ' : '⏳ '}{emi.status}
                                   </Badge>
                                 </TableCell>
                                 <TableCell>{emi.remark}</TableCell>
