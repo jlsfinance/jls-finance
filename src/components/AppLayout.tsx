@@ -97,7 +97,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     }
   };
   
-  const menuItems = allMenuItems.filter(item => user && item.roles.includes(item.role));
+  const menuItems = allMenuItems.filter(item => user && item.roles.includes(user.role));
 
   return (
     <SidebarProvider>
