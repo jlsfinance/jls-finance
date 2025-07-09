@@ -5,7 +5,7 @@ import { getStorage } from "firebase/storage";
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAn2-G8F9v1s2g3h4j5k6l7m8n9o0p1q2r",
+  apiKey: "AIzaSyC49_jV4MSzJzS7qfA_yU5v8s1wO3T_R2g",
   authDomain: "jls-finance-company.firebaseapp.com",
   projectId: "jls-finance-company",
   storageBucket: "jls-finance-company.appspot.com",
