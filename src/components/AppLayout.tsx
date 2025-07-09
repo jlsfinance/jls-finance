@@ -38,7 +38,6 @@ import {
   BookCheck,
   BarChart3,
   Calculator,
-  Settings,
   LogOut,
   Banknote,
   ListChecks,
@@ -62,7 +61,6 @@ const allMenuItems = [
   { href: "/collections/due-list", label: "EMI Collection", icon: BookCheck, roles: ['admin', 'agent'] },
   { href: "/emi-calculator", label: "EMI Calculator", icon: Calculator, roles: ['admin', 'agent', 'customer'] },
   { href: "/receipts", label: "Receipts", icon: Receipt, roles: ['admin', 'agent'] },
-  { href: "/settings", label: "Settings", icon: Settings, roles: ['admin'] },
 ];
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
@@ -108,7 +106,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             {menuItems.map((item) => (
               <SidebarMenuItem key={item.href}>
                 <SidebarMenuButton
-                  isActive={pathname.startsWith(item.href) && (item.href !== '/dashboard' || pathname === '/dashboard') && (item.href !== '/settings' || pathname === '/settings')}
+                  isActive={pathname.startsWith(item.href) && (item.href !== '/dashboard' || pathname === '/dashboard')}
                   tooltip={item.label}
                   asChild
                 >
@@ -159,10 +157,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <DropdownMenuLabel>{user?.name || 'My Account'}</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem>Profile</DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/settings">Settings</Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout}>Logout</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
