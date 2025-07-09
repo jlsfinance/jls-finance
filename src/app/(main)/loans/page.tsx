@@ -136,7 +136,6 @@ export default function LoansPage() {
         const rightMargin = pageWidth - 15;
         const contentWidth = rightMargin - leftMargin;
 
-        // --- Helper Functions for Header and Footer ---
         const addHeader = (pageNumber: number) => {
             doc.setFont("helvetica", "bold");
             doc.setFontSize(18);
@@ -158,7 +157,6 @@ export default function LoansPage() {
         addHeader(1);
         let y = 40;
 
-        // --- Customer Photo ---
         if (customer.photo_url) {
             try {
                 const imageUrl = `https://images.weserv.nl/?url=${encodeURIComponent(customer.photo_url)}`;
@@ -178,7 +176,6 @@ export default function LoansPage() {
         const leftColX = leftMargin;
         const rightColX = leftMargin + (contentWidth / 2) + 5;
         
-        // --- Borrower & KYC Info ---
         doc.setFont(undefined, "bold");
         doc.text("Borrower Details", leftColX, y);
         doc.text("KYC Details", rightColX, y);
@@ -219,7 +216,6 @@ export default function LoansPage() {
         
         y = Math.max(leftY, rightY) + 5;
 
-        // --- Guarantor Info ---
         if (customer.guarantor && customer.guarantor.name) {
             doc.line(leftMargin, y, rightMargin, y); y+=5;
             doc.setFont(undefined, "bold"); doc.text("Guarantor Details", leftColX, y); y+=7;
@@ -239,7 +235,6 @@ export default function LoansPage() {
         }
         y += 5;
 
-        // --- Loan Summary ---
         doc.line(leftMargin, y, rightMargin, y); y+=5;
         doc.setFont(undefined, 'bold'); doc.text("Loan Summary", leftColX, y); y+=7;
         doc.setFont(undefined, 'normal');
@@ -268,7 +263,6 @@ export default function LoansPage() {
         addHeader(2);
         y = 40;
 
-        // --- Legal Clauses ---
         doc.setFont(undefined, 'bold'); doc.text("Terms & Conditions", leftMargin, y); y+=10;
         doc.setFont(undefined, 'normal');
         const clauses = [
@@ -291,7 +285,6 @@ export default function LoansPage() {
             y += content.length * 5 + 8;
         });
         
-        // --- Signatures ---
         y = pageHeight - 70;
         const signatureBlockX1 = leftMargin;
         const signatureBlockX2 = rightMargin - 70;
@@ -346,7 +339,6 @@ export default function LoansPage() {
         let y = 15;
         const pageWidth = doc.internal.pageSize.width;
         
-        // --- HEADER & PHOTO ---
         doc.setFont("helvetica", "bold");
         doc.setFontSize(16);
         doc.text('JLS FINANCE LTD', pageWidth / 2, y, { align: 'center' });
@@ -370,9 +362,8 @@ export default function LoansPage() {
             }
         }
         
-        y = Math.max(y, 50); // Position below photo
+        y = Math.max(y, 50);
         
-        // --- LOAN SUMMARY (TWO COLUMNS) ---
         const leftColX = 15;
         const rightColX = 110;
         const labelValueOffset = 35;
@@ -400,8 +391,22 @@ export default function LoansPage() {
         doc.setFont(undefined, "normal"); doc.text(loan.disbursalDate || 'N/A', leftColX + labelValueOffset, y);
         y += 10;
         
-        // --- EMI SCHEDULE TABLE ---
-        const head = [["EMI No.", "Due Date", "Principal", "Interest", "Total EMI", "Balance After", "Paid Date", "Status"]];
+        const formatDate = (dateString: string | undefined) => {
+            if (!dateString) return '';
+            const d = new Date(dateString);
+            if (isNaN(d.getTime())) return '';
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = d.getFullYear();
+            return `${day}-${month}-${year}`;
+        };
+        const formatCurrencyForTable = (value: number) => new Intl.NumberFormat("en-IN", {
+            style: "decimal",
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        }).format(value);
+
+        const head = [["EMI No", "Due Date", "Amount (₹)", "Principal", "Interest", "Balance", "Status"]];
         const body: any[] = [];
         let balance = loan.amount;
         const monthlyInterestRate = loan.interestRate / 12 / 100;
@@ -413,14 +418,13 @@ export default function LoansPage() {
             const emiData = loan.repaymentSchedule?.find((e: any) => e.emiNumber === i);
             
             body.push([
-                `${i}/${loan.tenure}`,
-                emiData?.dueDate || 'N/A',
-                formatCurrency(principalPayment),
-                formatCurrency(interestPayment),
-                formatCurrency(loan.emi),
-                formatCurrency(balance > 0 ? balance : 0),
-                emiData?.paymentDate || '---',
-                emiData?.status || 'Pending'
+                i,
+                formatDate(emiData?.dueDate),
+                formatCurrencyForTable(loan.emi),
+                formatCurrencyForTable(principalPayment),
+                formatCurrencyForTable(interestPayment),
+                formatCurrencyForTable(balance > 0 ? balance : 0),
+                emiData?.status === 'Paid' ? 'Paid' : ''
             ]);
         }
         
@@ -431,6 +435,12 @@ export default function LoansPage() {
             theme: 'grid',
             headStyles: { fillColor: [46, 154, 254], textColor: 255 },
             styles: { font: "helvetica", fontSize: 8 },
+            columnStyles: {
+                2: { align: 'right' },
+                3: { align: 'right' },
+                4: { align: 'right' },
+                5: { align: 'right' },
+            }
         });
         
         const pdfBlob = doc.output('blob');
