@@ -13,7 +13,7 @@ import { ArrowLeft, Download, Printer, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 
 // Interfaces for type safety
 interface Emi {
@@ -50,7 +50,8 @@ export default function LoanDetailsPage() {
   
   const [loan, setLoan] = useState<Loan | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isPrinting, setIsPrinting] = useState(false);
+  const [isDownloadingSchedule, setIsDownloadingSchedule] = useState(false);
+  const [isDownloadingReceipt, setIsDownloadingReceipt] = useState<number | null>(null);
 
   useEffect(() => {
     if (loanId) {
@@ -144,9 +145,9 @@ export default function LoanDetailsPage() {
     return schedule;
   }, [loan]);
 
-  const handlePrintSchedule = async () => {
+  const handleDownloadSchedule = async () => {
     if (!loan) return;
-    setIsPrinting(true);
+    setIsDownloadingSchedule(true);
     try {
         const doc = new jsPDF();
 
@@ -197,38 +198,53 @@ export default function LoanDetailsPage() {
         console.error("Failed to generate PDF:", error);
         toast({ variant: "destructive", title: "Download Failed", description: "An error occurred while generating the PDF." });
     } finally {
-        setIsPrinting(false);
+        setIsDownloadingSchedule(false);
     }
   };
 
 
   const handleDownloadReceipt = async (emi: any) => {
       if (!loan) return;
+      setIsDownloadingReceipt(emi.month);
       try {
-        const doc = new jsPDF();
-        let y = 15;
+        // Validate required data
+        if (!loan.customerId || !emi.month || !loan.customerName) {
+            toast({
+                variant: "destructive",
+                title: "Data Missing",
+                description: "Cannot generate receipt due to incomplete loan data.",
+            });
+            setIsDownloadingReceipt(null);
+            return;
+        }
 
-        // Fetch customer data for photo
+        const doc = new jsPDF();
+        
         const customerRef = doc(db, "customers", loan.customerId);
         const customerSnap = await getDoc(customerRef);
 
+        let y = 15;
+
+        // Header
         doc.setFontSize(16);
         doc.setFont("helvetica", "bold");
         doc.text("JLS FINANCE LTD", 105, y, { align: 'center' });
         y += 10;
         
+        // Customer photo with fallback
         if (customerSnap.exists() && customerSnap.data().photo_url) {
             try {
                 const imageUrl = `https://images.weserv.nl/?url=${encodeURIComponent(customerSnap.data().photo_url)}`;
                 const response = await fetch(imageUrl);
+                if (!response.ok) throw new Error(`Failed to fetch image: ${response.statusText}`);
                 const blob = await response.blob();
                 const reader = new FileReader();
                 const imgData = await new Promise<string>((resolve, reject) => {
                     reader.onload = () => resolve(reader.result as string);
-                    reader.onerror = reject;
+                    reader.onerror = (error) => reject(error);
                     reader.readAsDataURL(blob);
                 });
-                doc.addImage(imgData, 'JPEG', 165, y, 30, 30);
+                doc.addImage(imgData, 'JPEG', 165, y - 5, 30, 30);
             } catch (e) {
                 console.error("Could not add customer image to PDF:", e);
             }
@@ -245,7 +261,16 @@ export default function LoanDetailsPage() {
         doc.setFont("helvetica", "normal");
         doc.text(`Receipt ID: RCPT-${loan.id}-${emi.month}`, 14, y);
         y += 7;
-        doc.text(`Payment Date: ${emi.paymentDate || 'N/A'}`, 14, y);
+        
+        let formattedDate = 'N/A';
+        if (emi.paymentDate) {
+            try {
+                formattedDate = format(parseISO(emi.paymentDate), 'PPP');
+            } catch (e) {
+                console.error(`Invalid paymentDate format: ${emi.paymentDate}`);
+            }
+        }
+        doc.text(`Payment Date: ${formattedDate}`, 14, y);
         y += 8;
 
         doc.line(14, y, 196, y);
@@ -277,20 +302,22 @@ export default function LoanDetailsPage() {
         y += 13;
 
         const paymentMethod = loan.repaymentSchedule.find(e => e.emiNumber === emi.month)?.paymentMethod || 'N/A';
-        doc.text(`Payment Method: ${paymentMethod}`, 14, y);
+        doc.text(`Payment Method: ${paymentMethod.toUpperCase()}`, 14, y);
 
         doc.setFontSize(10);
         doc.text("This is a computer-generated receipt and does not require a signature.", 105, 280, { align: 'center' });
         
         doc.save(`Receipt_${loan.id}_EMI_${emi.month}.pdf`);
-        toast({ title: "Receipt Downloaded!" });
-      } catch (error) {
+        toast({ title: "✅ Receipt Downloaded!" });
+      } catch (error: any) {
         console.error("Failed to generate PDF:", error);
         toast({
             variant: "destructive",
             title: "Download Failed",
-            description: "Could not generate the PDF receipt."
+            description: error.message || "Could not generate the PDF receipt."
         });
+      } finally {
+        setIsDownloadingReceipt(null);
       }
   }
 
@@ -322,8 +349,8 @@ export default function LoanDetailsPage() {
         </Button>
         <h1 className="text-2xl font-headline font-semibold">Loan Details</h1>
         <div className="flex items-center gap-2">
-            <Button onClick={handlePrintSchedule} disabled={isPrinting || !loan.repaymentSchedule} className="bg-accent text-accent-foreground hover:bg-accent/90">
-                {isPrinting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+            <Button onClick={handleDownloadSchedule} disabled={isDownloadingSchedule || !loan.repaymentSchedule} className="bg-accent text-accent-foreground hover:bg-accent/90">
+                {isDownloadingSchedule ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                 Download Schedule
             </Button>
             <Button variant="outline" onClick={() => window.print()}>
@@ -397,8 +424,8 @@ export default function LoanDetailsPage() {
                                 <TableCell>{emi.remark}</TableCell>
                                 <TableCell className="text-center no-print">
                                     {emi.receiptDownloadable ? (
-                                        <Button variant="link" size="sm" onClick={() => handleDownloadReceipt(emi)}>
-                                            <Download className="h-4 w-4" />
+                                        <Button variant="link" size="sm" onClick={() => handleDownloadReceipt(emi)} disabled={isDownloadingReceipt === emi.month}>
+                                            {isDownloadingReceipt === emi.month ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                                         </Button>
                                     ) : '-'}
                                 </TableCell>

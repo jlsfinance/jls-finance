@@ -52,12 +52,22 @@ export default function ReceiptsClient() {
 
 
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 0 }).format(value);
+    return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(value);
   };
   
   const handleDownloadReceipt = async (receipt: Receipt) => {
     setIsDownloading(receipt.id);
     try {
+        if (!receipt || !receipt.customerId || !receipt.receiptId) {
+            toast({
+                variant: "destructive",
+                title: "Data Missing",
+                description: "Cannot generate receipt due to incomplete data.",
+            });
+            setIsDownloading(null);
+            return;
+        }
+
         const doc = new jsPDF();
         
         const customerRef = doc(db, "customers", receipt.customerId);
@@ -73,11 +83,12 @@ export default function ReceiptsClient() {
             try {
                 const imageUrl = `https://images.weserv.nl/?url=${encodeURIComponent(customerSnap.data().photo_url)}`;
                 const response = await fetch(imageUrl);
+                if (!response.ok) throw new Error(`Image fetch failed: ${response.statusText}`);
                 const blob = await response.blob();
                 const reader = new FileReader();
                 const imgData = await new Promise<string>((resolve, reject) => {
                     reader.onload = () => resolve(reader.result as string);
-                    reader.onerror = reject;
+                    reader.onerror = (error) => reject(error);
                     reader.readAsDataURL(blob);
                 });
                 doc.addImage(imgData, 'JPEG', 165, y - 5, 30, 30);
@@ -97,7 +108,14 @@ export default function ReceiptsClient() {
         doc.setFont("helvetica", "normal");
         doc.text(`Receipt ID: ${receipt.receiptId}`, 14, y);
         y += 7;
-        doc.text(`Payment Date: ${format(parseISO(receipt.paymentDate), 'PPP')}`, 14, y);
+
+        let formattedDate = 'N/A';
+        try {
+            formattedDate = format(parseISO(receipt.paymentDate), 'PPP');
+        } catch (e) {
+            console.error("Invalid date format for receipt:", receipt.paymentDate);
+        }
+        doc.text(`Payment Date: ${formattedDate}`, 14, y);
         y += 8;
 
         doc.line(14, y, 196, y);
@@ -116,7 +134,7 @@ export default function ReceiptsClient() {
         doc.text("Amount", 180, y, { align: 'right' });
         y += 8;
         doc.setFont("helvetica", "normal");
-        doc.text(`EMI Payment (No. ${receipt.emiNumber})`, 14, y);
+        doc.text(`EMI Payment (No. ${receipt.emiNumber || 'N/A'})`, 14, y);
         doc.text(formatCurrency(receipt.amount), 180, y, { align: 'right' });
         y += 10;
 
@@ -128,19 +146,19 @@ export default function ReceiptsClient() {
         doc.text(formatCurrency(receipt.amount), 180, y, { align: 'right' });
         y += 13;
 
-        doc.text(`Payment Method: ${receipt.paymentMethod.toUpperCase()}`, 14, y);
+        doc.text(`Payment Method: ${(receipt.paymentMethod || 'N/A').toUpperCase()}`, 14, y);
 
         doc.setFontSize(10);
         doc.text("This is a computer-generated receipt and does not require a signature.", 105, 280, { align: 'center' });
         
         doc.save(`Receipt_${receipt.receiptId}.pdf`);
-        toast({ title: "Receipt Downloaded!" });
-    } catch (error) {
+        toast({ title: "✅ Success!", description: "Receipt has been downloaded." });
+    } catch (error: any) {
         console.error("Failed to generate PDF:", error);
         toast({
             variant: "destructive",
             title: "Download Failed",
-            description: "Could not generate the PDF receipt."
+            description: error.message || "Could not generate the PDF receipt."
         });
     } finally {
         setIsDownloading(null);
