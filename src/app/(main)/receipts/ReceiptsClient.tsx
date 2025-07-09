@@ -2,7 +2,7 @@
 "use client"
 
 import React, { useState, useEffect, useCallback } from 'react'
-import { format } from 'date-fns'
+import { format, parseISO } from 'date-fns'
 import jsPDF from 'jspdf'
 import { db } from "@/lib/firebase";
 import { collection, getDocs, query, orderBy, doc, getDoc } from 'firebase/firestore';
@@ -60,7 +60,6 @@ export default function ReceiptsClient() {
     try {
         const doc = new jsPDF();
         
-        // Fetch customer data for photo
         const customerRef = doc(db, "customers", receipt.customerId);
         const customerSnap = await getDoc(customerRef);
         
@@ -72,7 +71,6 @@ export default function ReceiptsClient() {
         
         if (customerSnap.exists() && customerSnap.data().photo_url) {
             try {
-                // Using a CORS proxy for imgbb
                 const imageUrl = `https://images.weserv.nl/?url=${encodeURIComponent(customerSnap.data().photo_url)}`;
                 const response = await fetch(imageUrl);
                 const blob = await response.blob();
@@ -82,7 +80,7 @@ export default function ReceiptsClient() {
                     reader.onerror = reject;
                     reader.readAsDataURL(blob);
                 });
-                doc.addImage(imgData, 'JPEG', 165, y, 30, 30);
+                doc.addImage(imgData, 'JPEG', 165, y - 5, 30, 30);
             } catch (e) {
                 console.error("Could not add customer image to PDF:", e);
             }
@@ -99,7 +97,7 @@ export default function ReceiptsClient() {
         doc.setFont("helvetica", "normal");
         doc.text(`Receipt ID: ${receipt.receiptId}`, 14, y);
         y += 7;
-        doc.text(`Payment Date: ${format(new Date(receipt.paymentDate), 'PPP') || 'N/A'}`, 14, y);
+        doc.text(`Payment Date: ${format(parseISO(receipt.paymentDate), 'PPP')}`, 14, y);
         y += 8;
 
         doc.line(14, y, 196, y);
@@ -130,7 +128,7 @@ export default function ReceiptsClient() {
         doc.text(formatCurrency(receipt.amount), 180, y, { align: 'right' });
         y += 13;
 
-        doc.text(`Payment Method: ${receipt.paymentMethod || 'N/A'}`, 14, y);
+        doc.text(`Payment Method: ${receipt.paymentMethod.toUpperCase()}`, 14, y);
 
         doc.setFontSize(10);
         doc.text("This is a computer-generated receipt and does not require a signature.", 105, 280, { align: 'center' });
@@ -184,10 +182,10 @@ export default function ReceiptsClient() {
                 <TableRow key={receipt.id}>
                   <TableCell className="font-medium">{receipt.receiptId}</TableCell>
                   <TableCell>{receipt.customerName}</TableCell>
-                  <TableCell>{receipt.loanId}</TableCell>
+                  <TableCell>{receipt.loanId.slice(0, 8)}...</TableCell>
                   <TableCell>₹{receipt.amount.toLocaleString('en-IN')}</TableCell>
-                  <TableCell>{receipt.paymentDate}</TableCell>
-                  <TableCell>{receipt.paymentMethod}</TableCell>
+                  <TableCell>{format(parseISO(receipt.paymentDate), 'dd MMM, yyyy')}</TableCell>
+                  <TableCell>{receipt.paymentMethod.toUpperCase()}</TableCell>
                   <TableCell className="text-center">
                     <Button variant="outline" size="sm" onClick={() => handleDownloadReceipt(receipt)} disabled={isDownloading === receipt.id}>
                       {isDownloading === receipt.id ? (
