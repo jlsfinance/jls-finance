@@ -50,18 +50,27 @@ import { FloatingActionButton } from "./FloatingActionButton";
 import { useToast } from "@/hooks/use-toast";
 
 const allMenuItems = [
+  // General
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ['admin', 'agent', 'customer'] },
+  
+  // Customer & Loan Management (Agent + Admin)
   { href: "/customers", label: "Customers", icon: Users, roles: ['admin', 'agent'] },
   { href: "/loans", label: "All Loans", icon: ListChecks, roles: ['admin', 'agent'] },
-  { href: "/reports", label: "Reports", icon: BarChart3, roles: ['admin'] },
+  { href: "/collections/due-list", label: "EMI Collection", icon: BookCheck, roles: ['admin', 'agent'] },
+  { href: "/receipts", label: "Receipts", icon: Receipt, roles: ['admin', 'agent'] },
+
+  // Actions (Agent + Admin)
   { href: "/customers/new", label: "KYC Registration", icon: FileText, roles: ['admin', 'agent'] },
   { href: "/loans/new", label: "Loan Application", icon: HandCoins, roles: ['admin', 'agent'] },
+  
+  // Tools (All)
+  { href: "/emi-calculator", label: "EMI Calculator", icon: Calculator, roles: ['admin', 'agent', 'customer'] },
+
+  // Admin Section
   { href: "/admin/approvals", label: "Loan Approvals", icon: Gavel, roles: ['admin'] },
   { href: "/admin/disbursal", label: "Loan Disbursal", icon: Banknote, roles: ['admin'] },
-  { href: "/admin/settings", label: "Admin Settings", icon: UserCog, roles: ['admin'] },
-  { href: "/collections/due-list", label: "EMI Collection", icon: BookCheck, roles: ['admin', 'agent'] },
-  { href: "/emi-calculator", label: "EMI Calculator", icon: Calculator, roles: ['admin', 'agent', 'customer'] },
-  { href: "/receipts", label: "Receipts", icon: Receipt, roles: ['admin', 'agent'] },
+  { href: "/reports", label: "Reports", icon: BarChart3, roles: ['admin'] },
+  { href: "/admin/settings", label: "User Management", icon: UserCog, roles: ['admin'] },
 ];
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
