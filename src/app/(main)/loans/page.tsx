@@ -98,14 +98,31 @@ export default function LoansPage() {
 
       doc.setFontSize(18);
       doc.setFont("helvetica", "bold");
-      doc.text("JLS FINANCE LTD", doc.internal.pageSize.getWidth() / 2, y, { align: 'center' });
+      doc.text("JLS FINANCE LTD", 105, y, { align: 'center' });
       y += 10;
       doc.setFontSize(14);
       doc.setFont("helvetica", "normal");
-      doc.text("Loan Agreement", doc.internal.pageSize.getWidth() / 2, y, { align: 'center' });
+      doc.text("Loan Agreement", 105, y, { align: 'center' });
       y += 15;
 
-      const addSection = (title: string, details: { [key: string]: string | number }) => {
+      if (customer.photo_url) {
+        try {
+            const response = await fetch(customer.photo_url);
+            const blob = await response.blob();
+            const reader = new FileReader();
+            const imgData = await new Promise<string>((resolve, reject) => {
+                reader.onload = () => resolve(reader.result as string);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+            doc.addImage(imgData, 'JPEG', 165, 15, 30, 30);
+        } catch (e) {
+            console.error("Failed to add image to PDF:", e);
+        }
+      }
+
+
+      const addSection = (title: string, details: { [key: string]: any }) => {
         doc.setFontSize(12);
         doc.setFont("helvetica", "bold");
         doc.text(title, 14, y);
@@ -182,12 +199,33 @@ export default function LoansPage() {
     setCurrentPdfName(`Loan_Card_${loan.id}.pdf`);
     
     try {
+        const customerRef = doc(db, "customers", loan.customerId);
+        const customerSnap = await getDoc(customerRef);
+        const customer = customerSnap.exists() ? customerSnap.data() : null;
+
         const doc = new jsPDF();
         let y = 20;
         doc.setFontSize(16);
         doc.setFont("helvetica", "bold");
-        doc.text('JLS FINANCE LTD', doc.internal.pageSize.getWidth() / 2, y, { align: 'center' });
+        doc.text('JLS FINANCE LTD', 105, y, { align: 'center' });
         y += 10;
+        
+        if (customer?.photo_url) {
+            try {
+                const response = await fetch(customer.photo_url);
+                const blob = await response.blob();
+                const reader = new FileReader();
+                const imgData = await new Promise<string>((resolve, reject) => {
+                    reader.onload = () => resolve(reader.result as string);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+                doc.addImage(imgData, 'JPEG', 165, 15, 30, 30);
+            } catch (e) {
+                console.error("Failed to add image to PDF:", e);
+            }
+        }
+        
         doc.setFontSize(12);
         doc.setFont("helvetica", "normal");
         doc.text(`Customer: ${loan.customerName}`, 14, y);
@@ -342,7 +380,7 @@ export default function LoansPage() {
                     Preview of the generated document. You can download it using the button below.
                 </DialogDescription>
             </DialogHeader>
-            <div className="flex-grow flex items-center justify-center border rounded-md overflow-hidden">
+            <div className="flex-grow flex items-center justify-center border rounded-md overflow-hidden bg-muted">
                 {isGeneratingPdf ? (
                     <div className="flex flex-col items-center gap-2">
                         <Loader2 className="h-8 w-8 animate-spin text-primary" />
