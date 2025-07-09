@@ -68,15 +68,15 @@ export default function ReceiptsClient() {
             return;
         }
 
-        const doc = new jsPDF();
+        const pdfDoc = new jsPDF();
         
         const customerRef = doc(db, "customers", receipt.customerId);
         const customerSnap = await getDoc(customerRef);
         
         let y = 15;
-        doc.setFontSize(16);
-        doc.setFont("helvetica", "bold");
-        doc.text("JLS FINANCE LTD", 105, y, { align: 'center' });
+        pdfDoc.setFontSize(16);
+        pdfDoc.setFont("helvetica", "bold");
+        pdfDoc.text("JLS FINANCE LTD", 105, y, { align: 'center' });
         y += 10;
         
         if (customerSnap.exists() && customerSnap.data().photo_url) {
@@ -91,22 +91,22 @@ export default function ReceiptsClient() {
                     reader.onerror = (error) => reject(error);
                     reader.readAsDataURL(blob);
                 });
-                doc.addImage(imgData, 'JPEG', 165, y - 5, 30, 30);
+                pdfDoc.addImage(imgData, 'JPEG', 165, y - 5, 30, 30);
             } catch (e) {
                 console.error("Could not add customer image to PDF:", e);
             }
         }
 
-        doc.setFontSize(14);
-        doc.setFont("helvetica", "normal");
-        doc.text("Payment Receipt", 105, y, { align: 'center' });
+        pdfDoc.setFontSize(14);
+        pdfDoc.setFont("helvetica", "normal");
+        pdfDoc.text("Payment Receipt", 105, y, { align: 'center' });
         y += 15;
         
         y = Math.max(y, 60);
 
-        doc.setFontSize(11);
-        doc.setFont("helvetica", "normal");
-        doc.text(`Receipt ID: ${receipt.receiptId}`, 14, y);
+        pdfDoc.setFontSize(11);
+        pdfDoc.setFont("helvetica", "normal");
+        pdfDoc.text(`Receipt ID: ${receipt.receiptId}`, 14, y);
         y += 7;
 
         let formattedDate = 'N/A';
@@ -115,43 +115,43 @@ export default function ReceiptsClient() {
         } catch (e) {
             console.error("Invalid date format for receipt:", receipt.paymentDate);
         }
-        doc.text(`Payment Date: ${formattedDate}`, 14, y);
+        pdfDoc.text(`Payment Date: ${formattedDate}`, 14, y);
         y += 8;
 
-        doc.line(14, y, 196, y);
+        pdfDoc.line(14, y, 196, y);
         y += 10;
 
-        doc.text(`Customer Name: ${receipt.customerName}`, 14, y);
+        pdfDoc.text(`Customer Name: ${receipt.customerName}`, 14, y);
         y += 7;
-        doc.text(`Loan ID: ${receipt.loanId}`, 14, y);
+        pdfDoc.text(`Loan ID: ${receipt.loanId}`, 14, y);
         y += 8;
 
-        doc.line(14, y, 196, y);
+        pdfDoc.line(14, y, 196, y);
         y += 7;
 
-        doc.setFont("helvetica", "bold");
-        doc.text("Description", 14, y);
-        doc.text("Amount", 180, y, { align: 'right' });
+        pdfDoc.setFont("helvetica", "bold");
+        pdfDoc.text("Description", 14, y);
+        pdfDoc.text("Amount", 180, y, { align: 'right' });
         y += 8;
-        doc.setFont("helvetica", "normal");
-        doc.text(`EMI Payment (No. ${receipt.emiNumber || 'N/A'})`, 14, y);
-        doc.text(formatCurrency(receipt.amount), 180, y, { align: 'right' });
+        pdfDoc.setFont("helvetica", "normal");
+        pdfDoc.text(`EMI Payment (No. ${receipt.emiNumber || 'N/A'})`, 14, y);
+        pdfDoc.text(formatCurrency(receipt.amount), 180, y, { align: 'right' });
         y += 10;
 
-        doc.line(14, y, 196, y);
+        pdfDoc.line(14, y, 196, y);
         
         y += 7;
-        doc.setFont("helvetica", "bold");
-        doc.text("Total Paid:", 130, y);
-        doc.text(formatCurrency(receipt.amount), 180, y, { align: 'right' });
+        pdfDoc.setFont("helvetica", "bold");
+        pdfDoc.text("Total Paid:", 130, y);
+        pdfDoc.text(formatCurrency(receipt.amount), 180, y, { align: 'right' });
         y += 13;
 
-        doc.text(`Payment Method: ${(receipt.paymentMethod || 'N/A').toUpperCase()}`, 14, y);
+        pdfDoc.text(`Payment Method: ${(receipt.paymentMethod || 'N/A').toUpperCase()}`, 14, y);
 
-        doc.setFontSize(10);
-        doc.text("This is a computer-generated receipt and does not require a signature.", 105, 280, { align: 'center' });
+        pdfDoc.setFontSize(10);
+        pdfDoc.text("This is a computer-generated receipt and does not require a signature.", 105, 280, { align: 'center' });
         
-        doc.save(`Receipt_${receipt.receiptId}.pdf`);
+        pdfDoc.save(`Receipt_${receipt.receiptId}.pdf`);
         toast({ title: "✅ Success!", description: "Receipt has been downloaded." });
     } catch (error: any) {
         console.error("Failed to generate PDF:", error);

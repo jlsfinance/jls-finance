@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 import { db } from '@/lib/firebase'
-import { collection, getDocs, query, orderBy as firestoreOrderBy, doc as firestoreDoc, getDoc } from 'firebase/firestore'
+import { collection, getDocs, query, orderBy, doc, getDoc } from 'firebase/firestore'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -70,7 +70,7 @@ export default function LoansPage() {
     const fetchLoans = async () => {
         setLoading(true);
         try {
-            const q = query(collection(db, "loans"), firestoreOrderBy("date", "desc"));
+            const q = query(collection(db, "loans"), orderBy("date", "desc"));
             const querySnapshot = await getDocs(q);
             const loansData = querySnapshot.docs.map(doc => ({
                 id: doc.id,
@@ -122,35 +122,35 @@ export default function LoansPage() {
     setCurrentPdfName(`Loan_Agreement_${loan.id}.pdf`);
 
     try {
-        const doc = new jsPDF();
-        const customerRef = firestoreDoc(db, "customers", loan.customerId);
+        const pdfDoc = new jsPDF();
+        const customerRef = doc(db, "customers", loan.customerId);
         const customerSnap = await getDoc(customerRef);
         if (!customerSnap.exists()) {
             throw new Error("Customer details not found.");
         }
         const customer = customerSnap.data();
 
-        const pageHeight = doc.internal.pageSize.height;
-        const pageWidth = doc.internal.pageSize.width;
+        const pageHeight = pdfDoc.internal.pageSize.height;
+        const pageWidth = pdfDoc.internal.pageSize.width;
         const leftMargin = 15;
         const rightMargin = pageWidth - 15;
         const contentWidth = rightMargin - leftMargin;
 
         const addHeader = (pageNumber: number) => {
-            doc.setFont("helvetica", "bold");
-            doc.setFontSize(18);
-            doc.text("JLS FINANCE LTD", pageWidth / 2, 15, { align: 'center' });
-            doc.setFontSize(14);
+            pdfDoc.setFont("helvetica", "bold");
+            pdfDoc.setFontSize(18);
+            pdfDoc.text("JLS FINANCE LTD", pageWidth / 2, 15, { align: 'center' });
+            pdfDoc.setFontSize(14);
             let title = "LOAN AGREEMENT";
             if (pageNumber > 1) title += " (continued)";
-            doc.text(title, pageWidth / 2, 22, { align: 'center' });
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(10);
-            doc.text(`Date: ${loan.disbursalDate || new Date().toLocaleDateString('en-GB')}`, rightMargin, 28, { align: 'right' });
+            pdfDoc.text(title, pageWidth / 2, 22, { align: 'center' });
+            pdfDoc.setFont("helvetica", "normal");
+            pdfDoc.setFontSize(10);
+            pdfDoc.text(`Date: ${loan.disbursalDate || new Date().toLocaleDateString('en-GB')}`, rightMargin, 28, { align: 'right' });
         };
         const addFooter = (pageNumber: number) => {
-            doc.setFontSize(10);
-            doc.text(`Page ${pageNumber}/2`, pageWidth / 2, pageHeight - 10, { align: 'center' });
+            pdfDoc.setFontSize(10);
+            pdfDoc.text(`Page ${pageNumber}/2`, pageWidth / 2, pageHeight - 10, { align: 'center' });
         };
 
         // --- PAGE 1 ---
@@ -168,7 +168,7 @@ export default function LoansPage() {
                     reader.onerror = reject;
                     reader.readAsDataURL(blob);
                 });
-                doc.addImage(imgData, 'JPEG', rightMargin - 30, y - 5, 30, 30);
+                pdfDoc.addImage(imgData, 'JPEG', rightMargin - 30, y - 5, 30, 30);
             } catch (e) { console.error("Could not add customer image:", e); }
         }
 
@@ -176,11 +176,11 @@ export default function LoansPage() {
         const leftColX = leftMargin;
         const rightColX = leftMargin + (contentWidth / 2) + 5;
         
-        doc.setFont(undefined, "bold");
-        doc.text("Borrower Details", leftColX, y);
-        doc.text("KYC Details", rightColX, y);
+        pdfDoc.setFont(undefined, "bold");
+        pdfDoc.text("Borrower Details", leftColX, y);
+        pdfDoc.text("KYC Details", rightColX, y);
         y += 7;
-        doc.setFont(undefined, "normal");
+        pdfDoc.setFont(undefined, "normal");
 
         const borrowerInfo = [
             { label: "Full Name", value: customer.name || 'N/A' },
@@ -199,27 +199,27 @@ export default function LoansPage() {
         
         let leftY = y, rightY = y;
         borrowerInfo.forEach(info => {
-            doc.setFont(undefined, "bold"); doc.text(`${info.label}:`, leftColX, leftY);
-            doc.setFont(undefined, "normal");
-            const valueLines = doc.splitTextToSize(info.value, rightColX - leftColX - 30);
-            doc.text(valueLines, leftColX + 35, leftY);
+            pdfDoc.setFont(undefined, "bold"); pdfDoc.text(`${info.label}:`, leftColX, leftY);
+            pdfDoc.setFont(undefined, "normal");
+            const valueLines = pdfDoc.splitTextToSize(info.value, rightColX - leftColX - 30);
+            pdfDoc.text(valueLines, leftColX + 35, leftY);
             leftY += (valueLines.length * 5) + 3;
         });
 
         kycInfo.forEach(info => {
-            doc.setFont(undefined, "bold"); doc.text(`${info.label}:`, rightColX, rightY);
-            doc.setFont(undefined, "normal");
-            const valueLines = doc.splitTextToSize(info.value, rightMargin - rightColX - 25);
-            doc.text(valueLines, rightColX + 25, rightY);
+            pdfDoc.setFont(undefined, "bold"); pdfDoc.text(`${info.label}:`, rightColX, rightY);
+            pdfDoc.setFont(undefined, "normal");
+            const valueLines = pdfDoc.splitTextToSize(info.value, rightMargin - rightColX - 25);
+            pdfDoc.text(valueLines, rightColX + 25, rightY);
             rightY += (valueLines.length * 5) + 3;
         });
         
         y = Math.max(leftY, rightY) + 5;
 
         if (customer.guarantor && customer.guarantor.name) {
-            doc.line(leftMargin, y, rightMargin, y); y+=5;
-            doc.setFont(undefined, "bold"); doc.text("Guarantor Details", leftColX, y); y+=7;
-            doc.setFont(undefined, "normal");
+            pdfDoc.line(leftMargin, y, rightMargin, y); y+=5;
+            pdfDoc.setFont(undefined, "bold"); pdfDoc.text("Guarantor Details", leftColX, y); y+=7;
+            pdfDoc.setFont(undefined, "normal");
             const guarantorInfo = [
                 { label: "Name", value: customer.guarantor.name || 'N/A'},
                 { label: "Relation", value: customer.guarantor.relation || 'N/A'},
@@ -227,17 +227,17 @@ export default function LoansPage() {
                 { label: "Address", value: customer.guarantor.address || 'N/A'},
             ];
             guarantorInfo.forEach(info => {
-                 const valueLines = doc.splitTextToSize(info.value, contentWidth - 30);
-                 doc.setFont(undefined, 'bold'); doc.text(`${info.label}:`, leftMargin + 5, y);
-                 doc.setFont(undefined, 'normal'); doc.text(valueLines, leftMargin + 35, y);
+                 const valueLines = pdfDoc.splitTextToSize(info.value, contentWidth - 30);
+                 pdfDoc.setFont(undefined, 'bold'); pdfDoc.text(`${info.label}:`, leftMargin + 5, y);
+                 pdfDoc.setFont(undefined, 'normal'); pdfDoc.text(valueLines, leftMargin + 35, y);
                  y += (valueLines.length * 5) + 3;
             });
         }
         y += 5;
 
-        doc.line(leftMargin, y, rightMargin, y); y+=5;
-        doc.setFont(undefined, 'bold'); doc.text("Loan Summary", leftColX, y); y+=7;
-        doc.setFont(undefined, 'normal');
+        pdfDoc.line(leftMargin, y, rightMargin, y); y+=5;
+        pdfDoc.setFont(undefined, 'bold'); pdfDoc.text("Loan Summary", leftColX, y); y+=7;
+        pdfDoc.setFont(undefined, 'normal');
         
         const loanTerms = [
             { label: "Loan ID", value: loan.id },
@@ -250,21 +250,21 @@ export default function LoansPage() {
             { label: "First EMI Date", value: "The 1st day of the month following disbursement." },
         ];
         loanTerms.forEach(term => {
-            const valueLines = doc.splitTextToSize(term.value, contentWidth - 45);
-            doc.setFont(undefined, 'bold'); doc.text(`${term.label}:`, leftMargin + 5, y);
-            doc.setFont(undefined, 'normal'); doc.text(valueLines, leftMargin + 45, y);
+            const valueLines = pdfDoc.splitTextToSize(term.value, contentWidth - 45);
+            pdfDoc.setFont(undefined, 'bold'); pdfDoc.text(`${term.label}:`, leftMargin + 5, y);
+            pdfDoc.setFont(undefined, 'normal'); pdfDoc.text(valueLines, leftMargin + 45, y);
             y += (valueLines.length * 5) + 3;
         });
 
         addFooter(1);
 
         // --- PAGE 2 ---
-        doc.addPage();
+        pdfDoc.addPage();
         addHeader(2);
         y = 40;
 
-        doc.setFont(undefined, 'bold'); doc.text("Terms & Conditions", leftMargin, y); y+=10;
-        doc.setFont(undefined, 'normal');
+        pdfDoc.setFont(undefined, 'bold'); pdfDoc.text("Terms & Conditions", leftMargin, y); y+=10;
+        pdfDoc.setFont(undefined, 'normal');
         const clauses = [
             { title: "Security Clause", text: "This is an unsecured personal loan. No collateral or security has been provided by the Borrower to the Lender." },
             { title: "Prepayment", text: "No penalty will be charged for early repayment of the loan, in part or in full." },
@@ -277,11 +277,11 @@ export default function LoansPage() {
         ];
 
         clauses.forEach(clause => {
-            doc.setFont('helvetica', 'bold');
-            doc.text(clause.title, leftMargin, y); y += 6;
-            doc.setFont('helvetica', 'normal');
-            const content = doc.splitTextToSize(clause.text, contentWidth);
-            doc.text(content, leftMargin, y);
+            pdfDoc.setFont('helvetica', 'bold');
+            pdfDoc.text(clause.title, leftMargin, y); y += 6;
+            pdfDoc.setFont('helvetica', 'normal');
+            const content = pdfDoc.splitTextToSize(clause.text, contentWidth);
+            pdfDoc.text(content, leftMargin, y);
             y += content.length * 5 + 8;
         });
         
@@ -289,29 +289,29 @@ export default function LoansPage() {
         const signatureBlockX1 = leftMargin;
         const signatureBlockX2 = rightMargin - 70;
         
-        doc.text("_________________________", signatureBlockX1, y);
-        doc.text("_________________________", signatureBlockX2, y);
+        pdfDoc.text("_________________________", signatureBlockX1, y);
+        pdfDoc.text("_________________________", signatureBlockX2, y);
         y += 5;
-        doc.setFont(undefined, "bold");
-        doc.text("Lender: JLS FINANCE LTD", signatureBlockX1, y);
-        doc.text(`Borrower: ${customer.name}`, signatureBlockX2, y);
+        pdfDoc.setFont(undefined, "bold");
+        pdfDoc.text("Lender: JLS FINANCE LTD", signatureBlockX1, y);
+        pdfDoc.text(`Borrower: ${customer.name}`, signatureBlockX2, y);
         y += 7;
-        doc.text(`Date: ____________________`, signatureBlockX1, y);
-        doc.text(`Date: ____________________`, signatureBlockX2, y);
+        pdfDoc.text(`Date: ____________________`, signatureBlockX1, y);
+        pdfDoc.text(`Date: ____________________`, signatureBlockX2, y);
         
         if (customer.guarantor && customer.guarantor.name) {
             y += 15;
-            doc.text("_________________________", signatureBlockX1, y);
+            pdfDoc.text("_________________________", signatureBlockX1, y);
             y += 5;
-            doc.setFont(undefined, "bold");
-            doc.text(`Guarantor: ${customer.guarantor.name}`, signatureBlockX1, y);
+            pdfDoc.setFont(undefined, "bold");
+            pdfDoc.text(`Guarantor: ${customer.guarantor.name}`, signatureBlockX1, y);
             y += 7;
-            doc.text(`Date: ____________________`, signatureBlockX1, y);
+            pdfDoc.text(`Date: ____________________`, signatureBlockX1, y);
         }
         
         addFooter(2);
         
-        const pdfBlob = doc.output('blob');
+        const pdfBlob = pdfDoc.output('blob');
         setCurrentPdfBlob(pdfBlob);
         setPdfPreviewUrl(URL.createObjectURL(pdfBlob));
 
@@ -331,20 +331,20 @@ export default function LoansPage() {
     setCurrentPdfName(`Loan_Card_${loan.id}.pdf`);
     
     try {
-        const doc = new jsPDF();
-        const customerRef = firestoreDoc(db, "customers", loan.customerId);
+        const pdfDoc = new jsPDF();
+        const customerRef = doc(db, "customers", loan.customerId);
         const customerSnap = await getDoc(customerRef);
         const customer = customerSnap.exists() ? customerSnap.data() : null;
 
         let y = 15;
-        const pageWidth = doc.internal.pageSize.width;
+        const pageWidth = pdfDoc.internal.pageSize.width;
         
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(16);
-        doc.text('JLS FINANCE LTD', pageWidth / 2, y, { align: 'center' });
+        pdfDoc.setFont("helvetica", "bold");
+        pdfDoc.setFontSize(16);
+        pdfDoc.text('JLS FINANCE LTD', pageWidth / 2, y, { align: 'center' });
         y += 8;
-        doc.setFontSize(12);
-        doc.text('Loan Summary Card', pageWidth / 2, y, { align: 'center' });
+        pdfDoc.setFontSize(12);
+        pdfDoc.text('Loan Summary Card', pageWidth / 2, y, { align: 'center' });
         
         if (customer?.photo_url) {
             try {
@@ -356,7 +356,7 @@ export default function LoansPage() {
                     reader.onerror = reject;
                     reader.readAsDataURL(blob);
                 });
-                doc.addImage(imgData, 'JPEG', pageWidth - 15 - 30, 15, 30, 30);
+                pdfDoc.addImage(imgData, 'JPEG', pageWidth - 15 - 30, 15, 30, 30);
             } catch (e) {
                 console.error("Failed to add image to PDF:", e);
             }
@@ -368,8 +368,8 @@ export default function LoansPage() {
         const rightColX = 110;
         const labelValueOffset = 35;
 
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(10);
+        pdfDoc.setFont("helvetica", "normal");
+        pdfDoc.setFontSize(10);
         
         y += 5;
         const summary = [
@@ -379,16 +379,16 @@ export default function LoansPage() {
         ];
 
         summary.forEach(row => {
-            doc.setFont(undefined, "bold"); doc.text(`${row[0].label}:`, leftColX, y);
-            doc.setFont(undefined, "normal"); doc.text(row[0].value, leftColX + labelValueOffset, y);
+            pdfDoc.setFont(undefined, "bold"); pdfDoc.text(`${row[0].label}:`, leftColX, y);
+            pdfDoc.setFont(undefined, "normal"); pdfDoc.text(row[0].value, leftColX + labelValueOffset, y);
 
-            doc.setFont(undefined, "bold"); doc.text(`${row[1].label}:`, rightColX, y);
-            doc.setFont(undefined, "normal"); doc.text(row[1].value, rightColX + labelValueOffset, y);
+            pdfDoc.setFont(undefined, "bold"); pdfDoc.text(`${row[1].label}:`, rightColX, y);
+            pdfDoc.setFont(undefined, "normal"); pdfDoc.text(row[1].value, rightColX + labelValueOffset, y);
             y += 7;
         });
         
-        doc.setFont(undefined, "bold"); doc.text("Disbursal Date:", leftColX, y);
-        doc.setFont(undefined, "normal"); doc.text(loan.disbursalDate || 'N/A', leftColX + labelValueOffset, y);
+        pdfDoc.setFont(undefined, "bold"); pdfDoc.text("Disbursal Date:", leftColX, y);
+        pdfDoc.setFont(undefined, "normal"); pdfDoc.text(loan.disbursalDate || 'N/A', leftColX + labelValueOffset, y);
         y += 10;
         
         const formatDate = (dateString: string | undefined) => {
@@ -428,7 +428,7 @@ export default function LoansPage() {
             ]);
         }
         
-        autoTable(doc, { 
+        autoTable(pdfDoc, { 
             head, 
             body, 
             startY: y, 
@@ -443,7 +443,7 @@ export default function LoansPage() {
             }
         });
         
-        const pdfBlob = doc.output('blob');
+        const pdfBlob = pdfDoc.output('blob');
         setCurrentPdfBlob(pdfBlob);
         setPdfPreviewUrl(URL.createObjectURL(pdfBlob));
 

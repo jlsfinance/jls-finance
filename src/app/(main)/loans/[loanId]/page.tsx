@@ -149,20 +149,20 @@ export default function LoanDetailsPage() {
     if (!loan) return;
     setIsDownloadingSchedule(true);
     try {
-        const doc = new jsPDF();
+        const pdfDoc = new jsPDF();
 
         // Header
-        doc.setFontSize(16);
-        doc.setFont("helvetica", "bold");
-        doc.text('JLS FINANCE LTD', doc.internal.pageSize.getWidth() / 2, 15, { align: 'center' });
+        pdfDoc.setFontSize(16);
+        pdfDoc.setFont("helvetica", "bold");
+        pdfDoc.text('JLS FINANCE LTD', pdfDoc.internal.pageSize.getWidth() / 2, 15, { align: 'center' });
 
-        doc.setFontSize(14);
-        doc.setFont("helvetica", "normal");
-        doc.text('Loan Repayment Schedule', doc.internal.pageSize.getWidth() / 2, 25, { align: 'center' });
+        pdfDoc.setFontSize(14);
+        pdfDoc.setFont("helvetica", "normal");
+        pdfDoc.text('Loan Repayment Schedule', pdfDoc.internal.pageSize.getWidth() / 2, 25, { align: 'center' });
         
-        doc.setFontSize(10);
-        doc.text(`Customer: ${loan.customerName}`, 15, 35);
-        doc.text(`Loan ID: ${loan.id}`, 15, 42);
+        pdfDoc.setFontSize(10);
+        pdfDoc.text(`Customer: ${loan.customerName}`, 15, 35);
+        pdfDoc.text(`Loan ID: ${loan.id}`, 15, 42);
 
         const tableColumn = ["EMI No.", "Due Date", "Principal", "Interest", "Total EMI", "Balance After", "Paid Date", "Status", "Remark"];
         const tableRows: (string | number)[][] = [];
@@ -182,7 +182,7 @@ export default function LoanDetailsPage() {
             tableRows.push(emiData);
         });
 
-        autoTable(doc, {
+        autoTable(pdfDoc, {
             head: [tableColumn],
             body: tableRows,
             startY: 55,
@@ -191,7 +191,7 @@ export default function LoanDetailsPage() {
             styles: { font: "helvetica", fontSize: 8 },
         });
         
-        doc.save(`Payment_Schedule_${loan.id}.pdf`);
+        pdfDoc.save(`Payment_Schedule_${loan.id}.pdf`);
         toast({ title: "Schedule Downloaded!", description: "The payment schedule has been saved as a PDF." });
 
     } catch (error) {
@@ -218,7 +218,7 @@ export default function LoanDetailsPage() {
             return;
         }
 
-        const doc = new jsPDF();
+        const pdfDoc = new jsPDF();
         
         const customerRef = doc(db, "customers", loan.customerId);
         const customerSnap = await getDoc(customerRef);
@@ -226,9 +226,9 @@ export default function LoanDetailsPage() {
         let y = 15;
 
         // Header
-        doc.setFontSize(16);
-        doc.setFont("helvetica", "bold");
-        doc.text("JLS FINANCE LTD", 105, y, { align: 'center' });
+        pdfDoc.setFontSize(16);
+        pdfDoc.setFont("helvetica", "bold");
+        pdfDoc.text("JLS FINANCE LTD", 105, y, { align: 'center' });
         y += 10;
         
         // Customer photo with fallback
@@ -244,22 +244,22 @@ export default function LoanDetailsPage() {
                     reader.onerror = (error) => reject(error);
                     reader.readAsDataURL(blob);
                 });
-                doc.addImage(imgData, 'JPEG', 165, y - 5, 30, 30);
+                pdfDoc.addImage(imgData, 'JPEG', 165, y - 5, 30, 30);
             } catch (e) {
                 console.error("Could not add customer image to PDF:", e);
             }
         }
 
-        doc.setFontSize(14);
-        doc.setFont("helvetica", "normal");
-        doc.text("Payment Receipt", 105, y, { align: 'center' });
+        pdfDoc.setFontSize(14);
+        pdfDoc.setFont("helvetica", "normal");
+        pdfDoc.text("Payment Receipt", 105, y, { align: 'center' });
         y += 15;
         
         y = Math.max(y, 60);
 
-        doc.setFontSize(11);
-        doc.setFont("helvetica", "normal");
-        doc.text(`Receipt ID: RCPT-${loan.id}-${emi.month}`, 14, y);
+        pdfDoc.setFontSize(11);
+        pdfDoc.setFont("helvetica", "normal");
+        pdfDoc.text(`Receipt ID: RCPT-${loan.id}-${emi.month}`, 14, y);
         y += 7;
         
         let formattedDate = 'N/A';
@@ -270,44 +270,44 @@ export default function LoanDetailsPage() {
                 console.error(`Invalid paymentDate format: ${emi.paymentDate}`);
             }
         }
-        doc.text(`Payment Date: ${formattedDate}`, 14, y);
+        pdfDoc.text(`Payment Date: ${formattedDate}`, 14, y);
         y += 8;
 
-        doc.line(14, y, 196, y);
+        pdfDoc.line(14, y, 196, y);
         y += 10;
 
-        doc.text(`Customer Name: ${loan.customerName}`, 14, y);
+        pdfDoc.text(`Customer Name: ${loan.customerName}`, 14, y);
         y += 7;
-        doc.text(`Loan ID: ${loan.id}`, 14, y);
+        pdfDoc.text(`Loan ID: ${loan.id}`, 14, y);
         y += 8;
 
-        doc.line(14, y, 196, y);
+        pdfDoc.line(14, y, 196, y);
         y += 7;
 
-        doc.setFont("helvetica", "bold");
-        doc.text("Description", 14, y);
-        doc.text("Amount", 180, y, { align: 'right' });
+        pdfDoc.setFont("helvetica", "bold");
+        pdfDoc.text("Description", 14, y);
+        pdfDoc.text("Amount", 180, y, { align: 'right' });
         y += 8;
-        doc.setFont("helvetica", "normal");
-        doc.text(`EMI Payment (No. ${emi.month}/${loan.tenure})`, 14, y);
-        doc.text(formatCurrency(loan.emi), 180, y, { align: 'right' });
+        pdfDoc.setFont("helvetica", "normal");
+        pdfDoc.text(`EMI Payment (No. ${emi.month}/${loan.tenure})`, 14, y);
+        pdfDoc.text(formatCurrency(loan.emi), 180, y, { align: 'right' });
         y += 10;
 
-        doc.line(14, y, 196, y);
+        pdfDoc.line(14, y, 196, y);
         
         y += 7;
-        doc.setFont("helvetica", "bold");
-        doc.text("Total Paid:", 130, y);
-        doc.text(formatCurrency(loan.emi), 180, y, { align: 'right' });
+        pdfDoc.setFont("helvetica", "bold");
+        pdfDoc.text("Total Paid:", 130, y);
+        pdfDoc.text(formatCurrency(loan.emi), 180, y, { align: 'right' });
         y += 13;
 
         const paymentMethod = loan.repaymentSchedule.find(e => e.emiNumber === emi.month)?.paymentMethod || 'N/A';
-        doc.text(`Payment Method: ${paymentMethod.toUpperCase()}`, 14, y);
+        pdfDoc.text(`Payment Method: ${paymentMethod.toUpperCase()}`, 14, y);
 
-        doc.setFontSize(10);
-        doc.text("This is a computer-generated receipt and does not require a signature.", 105, 280, { align: 'center' });
+        pdfDoc.setFontSize(10);
+        pdfDoc.text("This is a computer-generated receipt and does not require a signature.", 105, 280, { align: 'center' });
         
-        doc.save(`Receipt_${loan.id}_EMI_${emi.month}.pdf`);
+        pdfDoc.save(`Receipt_${loan.id}_EMI_${emi.month}.pdf`);
         toast({ title: "✅ Receipt Downloaded!" });
       } catch (error: any) {
         console.error("Failed to generate PDF:", error);
