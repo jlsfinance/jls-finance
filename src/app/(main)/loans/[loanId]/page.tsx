@@ -1,3 +1,4 @@
+
 "use client"
 
 import React, { useEffect, useState, useMemo } from 'react';
@@ -12,6 +13,7 @@ import { ArrowLeft, Download, Printer, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { format } from 'date-fns';
 
 // Interfaces for type safety
 interface Emi {
@@ -200,20 +202,43 @@ export default function LoanDetailsPage() {
   };
 
 
-  const handleDownloadReceipt = (emi: any) => {
+  const handleDownloadReceipt = async (emi: any) => {
       if (!loan) return;
       const doc = new jsPDF();
       let y = 15;
+
+      // Fetch customer data for photo
+      const customerRef = doc(db, "customers", loan.customerId);
+      const customerSnap = await getDoc(customerRef);
 
       doc.setFontSize(16);
       doc.setFont("helvetica", "bold");
       doc.text("JLS FINANCE LTD", 105, y, { align: 'center' });
       y += 10;
+      
+      if (customerSnap.exists() && customerSnap.data().photo_url) {
+          try {
+              const imageUrl = `https://images.weserv.nl/?url=${encodeURIComponent(customerSnap.data().photo_url)}`;
+              const response = await fetch(imageUrl);
+              const blob = await response.blob();
+              const reader = new FileReader();
+              const imgData = await new Promise<string>((resolve, reject) => {
+                  reader.onload = () => resolve(reader.result as string);
+                  reader.onerror = reject;
+                  reader.readAsDataURL(blob);
+              });
+              doc.addImage(imgData, 'JPEG', 165, y, 30, 30);
+          } catch (e) {
+              console.error("Could not add customer image to PDF:", e);
+          }
+      }
 
       doc.setFontSize(14);
       doc.setFont("helvetica", "normal");
       doc.text("Payment Receipt", 105, y, { align: 'center' });
       y += 15;
+      
+      y = Math.max(y, 60);
 
       doc.setFontSize(11);
       doc.setFont("helvetica", "normal");
@@ -222,7 +247,7 @@ export default function LoanDetailsPage() {
       doc.text(`Payment Date: ${emi.paymentDate || 'N/A'}`, 14, y);
       y += 8;
 
-      doc.line(14, y, 196, y); // separator
+      doc.line(14, y, 196, y);
       y += 10;
 
       doc.text(`Customer Name: ${loan.customerName}`, 14, y);
@@ -230,7 +255,7 @@ export default function LoanDetailsPage() {
       doc.text(`Loan ID: ${loan.id}`, 14, y);
       y += 8;
 
-      doc.line(14, y, 196, y); // separator
+      doc.line(14, y, 196, y);
       y += 7;
 
       doc.setFont("helvetica", "bold");
@@ -243,14 +268,15 @@ export default function LoanDetailsPage() {
       y += 10;
 
       doc.line(14, y, 196, y);
-      y += 7;
       
+      y += 7;
       doc.setFont("helvetica", "bold");
       doc.text("Total Paid:", 130, y);
       doc.text(formatCurrency(loan.emi), 180, y, { align: 'right' });
       y += 13;
 
-      doc.text(`Payment Method: ${loan.repaymentSchedule.find(e => e.emiNumber === emi.month)?.paymentMethod || 'N/A'}`, 14, y);
+      const paymentMethod = loan.repaymentSchedule.find(e => e.emiNumber === emi.month)?.paymentMethod || 'N/A';
+      doc.text(`Payment Method: ${paymentMethod}`, 14, y);
 
       doc.setFontSize(10);
       doc.text("This is a computer-generated receipt and does not require a signature.", 105, 280, { align: 'center' });

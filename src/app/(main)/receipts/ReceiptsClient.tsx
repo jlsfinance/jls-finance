@@ -1,32 +1,28 @@
+
 "use client"
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react'
-import { useSearchParams } from 'next/navigation'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import * as z from 'zod'
+import React, { useState, useEffect, useCallback } from 'react'
 import { format } from 'date-fns'
 import jsPDF from 'jspdf'
 import { db } from "@/lib/firebase";
-import { collection, getDocs, addDoc, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, doc, getDoc } from 'firebase/firestore';
 
-import { PlusCircle, Download, CalendarIcon, Loader2 } from 'lucide-react'
+import { Download, Loader2 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog'
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
-import { Input } from "@/components/ui/input"
 import { useToast } from "@/hooks/use-toast"
 
 interface Receipt {
     id: string;
     loanId: string;
+    customerId: string;
     customerName: string;
     amount: number;
     paymentDate: string;
     paymentMethod: string;
     receiptId: string;
+    emiNumber: number;
 }
 
 export default function ReceiptsClient() {
@@ -59,21 +55,45 @@ export default function ReceiptsClient() {
     return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 0 }).format(value);
   };
   
-  const handleDownloadReceipt = (receipt: Receipt) => {
+  const handleDownloadReceipt = async (receipt: Receipt) => {
     setIsDownloading(receipt.id);
     try {
         const doc = new jsPDF();
         let y = 15;
 
+        // Fetch customer data for photo
+        const customerRef = doc(db, "customers", receipt.customerId);
+        const customerSnap = await getDoc(customerRef);
+        
         doc.setFontSize(16);
         doc.setFont("helvetica", "bold");
         doc.text("JLS FINANCE LTD", 105, y, { align: 'center' });
         y += 10;
+        
+        if (customerSnap.exists() && customerSnap.data().photo_url) {
+            try {
+                // Using a CORS proxy for imgbb
+                const imageUrl = `https://images.weserv.nl/?url=${encodeURIComponent(customerSnap.data().photo_url)}`;
+                const response = await fetch(imageUrl);
+                const blob = await response.blob();
+                const reader = new FileReader();
+                const imgData = await new Promise<string>((resolve, reject) => {
+                    reader.onload = () => resolve(reader.result as string);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+                doc.addImage(imgData, 'JPEG', 165, y, 30, 30);
+            } catch (e) {
+                console.error("Could not add customer image to PDF:", e);
+            }
+        }
 
         doc.setFontSize(14);
         doc.setFont("helvetica", "normal");
         doc.text("Payment Receipt", 105, y, { align: 'center' });
         y += 15;
+        
+        y = Math.max(y, 60);
 
         doc.setFontSize(11);
         doc.setFont("helvetica", "normal");
@@ -82,7 +102,7 @@ export default function ReceiptsClient() {
         doc.text(`Payment Date: ${format(new Date(receipt.paymentDate), 'PPP') || 'N/A'}`, 14, y);
         y += 8;
 
-        doc.line(14, y, 196, y); // separator
+        doc.line(14, y, 196, y);
         y += 10;
 
         doc.text(`Customer Name: ${receipt.customerName}`, 14, y);
@@ -90,7 +110,7 @@ export default function ReceiptsClient() {
         doc.text(`Loan ID: ${receipt.loanId}`, 14, y);
         y += 8;
 
-        doc.line(14, y, 196, y); // separator
+        doc.line(14, y, 196, y);
         y += 7;
 
         doc.setFont("helvetica", "bold");
@@ -98,7 +118,7 @@ export default function ReceiptsClient() {
         doc.text("Amount", 180, y, { align: 'right' });
         y += 8;
         doc.setFont("helvetica", "normal");
-        doc.text(`Payment Received`, 14, y);
+        doc.text(`EMI Payment (No. ${receipt.emiNumber})`, 14, y);
         doc.text(formatCurrency(receipt.amount), 180, y, { align: 'right' });
         y += 10;
 
@@ -115,7 +135,7 @@ export default function ReceiptsClient() {
         doc.setFontSize(10);
         doc.text("This is a computer-generated receipt and does not require a signature.", 105, 280, { align: 'center' });
         
-        doc.save(`Receipt_${receipt.id}.pdf`);
+        doc.save(`Receipt_${receipt.receiptId}.pdf`);
         toast({ title: "Receipt Downloaded!" });
     } catch (error) {
         console.error("Failed to generate PDF:", error);
@@ -133,7 +153,6 @@ export default function ReceiptsClient() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-headline font-semibold">Payment Receipts</h1>
-        {/* The "Add Receipt" button is now part of the EMI Collection flow */}
       </div>
 
       <Card className="shadow-lg">
