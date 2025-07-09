@@ -1,21 +1,24 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Terminal } from "lucide-react";
+import { Terminal, AlertTriangle } from "lucide-react";
 
 export function FirebaseNotConfigured() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-2xl shadow-2xl">
+      <Card className="w-full max-w-2xl shadow-2xl border-destructive">
         <CardHeader>
-          <CardTitle className="text-2xl text-destructive">Firebase Not Configured</CardTitle>
-          <CardDescription>
-            Your Firebase environment variables are missing. The application cannot connect to Firebase without them.
+          <div className="flex items-center gap-4 text-destructive">
+             <AlertTriangle className="h-8 w-8" />
+             <CardTitle className="text-2xl">Firebase Not Configured</CardTitle>
+          </div>
+          <CardDescription className="pt-2">
+            Your Firebase environment variables are missing. The application cannot connect to Firebase without them. This is a configuration step you must complete.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p>To fix this, please follow these steps:</p>
+          <p>To fix this, please follow these steps carefully:</p>
           <ol className="list-decimal list-inside space-y-2 text-sm">
-            <li>Create a file named <strong><code>.env.local</code></strong> in the root directory of your project (the same level as `package.json`).</li>
+            <li>Create a file named <strong><code>.env.local</code></strong> in the project's root directory (the same level as <code>package.json</code>).</li>
             <li>Go to your Firebase project settings and find your web app's configuration.</li>
             <li>Copy your Firebase config keys into the <strong><code>.env.local</code></strong> file. It should look like this:</li>
           </ol>
@@ -28,7 +31,13 @@ export function FirebaseNotConfigured() {
               </pre>
             </AlertDescription>
           </Alert>
-          <p className="font-semibold">After creating the file, you must restart your development server for the changes to take effect.</p>
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>CRITICAL STEP</AlertTitle>
+            <AlertDescription>
+              After creating or changing the <code>.env.local</code> file, you **MUST** restart your development server. The new variables will not be loaded otherwise.
+            </AlertDescription>
+          </Alert>
         </CardContent>
       </Card>
     </div>

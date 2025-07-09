@@ -1,4 +1,3 @@
-
 // File: src/lib/firebase.ts
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getFirestore, type Firestore } from "firebase/firestore";
@@ -31,7 +30,7 @@ if (firebaseConfig.apiKey && firebaseConfig.projectId) {
         console.error("Failed to initialize Firebase", e);
     }
 } else {
-    console.warn("Firebase configuration is missing or invalid. To resolve this, create a .env.local file in the project root with your Firebase project's configuration keys. Ensure you restart the development server after creating the file.");
+    console.warn("CRITICAL: Firebase configuration is missing or invalid. The application will not work without it. \n1. Create a `.env.local` file in the project root. \n2. Add your `NEXT_PUBLIC_` Firebase variables. \n3. RESTART the development server.");
 }
 
 export { db, storage, auth, isFirebaseInitialized };
