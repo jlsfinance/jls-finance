@@ -6,15 +6,14 @@ import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { db, storage } from "@/lib/firebase"
-import { collection, addDoc, query, where, getDocs, updateDoc, doc } from "firebase/firestore"
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
+import { db } from "@/lib/firebase"
+import { collection, addDoc, query, where, getDocs } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
 import { Loader2 } from "lucide-react"
@@ -86,7 +85,36 @@ export default function NewCustomerPage() {
           }
       }
 
-      // 2. Add customer document to get an ID
+      // 2. Upload photo to imgbb
+      let photoUrl = "";
+      const photoFile = data.photo?.[0];
+
+      if (photoFile) {
+        const formData = new FormData();
+        formData.append("key", "c9f4edabbd1fe1bc3a063e26bc6a2ecd");
+        formData.append("image", photoFile);
+
+        const response = await fetch("https://api.imgbb.com/1/upload", {
+          method: "POST",
+          body: formData,
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          toast({
+            variant: "destructive",
+            title: "❌ Image Upload Failed",
+            description: result.error?.message || "Could not upload the customer photo.",
+          });
+          setIsSubmitting(false);
+          return;
+        }
+        
+        photoUrl = result.data.url;
+      }
+
+      // 3. Prepare and save customer data to Firestore
       const customerData = {
         name: data.name,
         mobile: data.mobile,
@@ -98,22 +126,10 @@ export default function NewCustomerPage() {
         guarantor: data.guarantor,
         status: "Active",
         createdAt: new Date().toISOString(),
-        photo_url: ""
+        photo_url: photoUrl
       };
       
-      const docRef = await addDoc(collection(db, "customers"), customerData);
-
-      // 3. Upload photo and update document
-      const photoFile = data.photo?.[0];
-      if (photoFile) {
-        const storageRef = ref(storage, `customers/${docRef.id}/profile.jpg`);
-        await uploadBytes(storageRef, photoFile);
-        const photoUrl = await getDownloadURL(storageRef);
-        
-        await updateDoc(doc(db, "customers", docRef.id), {
-          photo_url: photoUrl
-        });
-      }
+      await addDoc(collection(db, "customers"), customerData);
 
       toast({
         title: "✅ Customer Registered",
@@ -121,12 +137,12 @@ export default function NewCustomerPage() {
       });
       router.push("/customers");
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving customer:", error);
       toast({
         variant: "destructive",
         title: "❌ Registration Failed",
-        description: "An unexpected error occurred.",
+        description: error.message || "An unexpected error occurred.",
       });
     } finally {
       setIsSubmitting(false);
@@ -139,7 +155,7 @@ export default function NewCustomerPage() {
         <Card className="max-w-3xl mx-auto shadow-lg">
              <CardHeader>
                 <CardTitle>Customer Details</CardTitle>
-                <CardDescription>Fill out the form to register a new customer in Firestore.</CardDescription>
+                <CardDescription>Fill out the form to register a new customer.</CardDescription>
             </CardHeader>
             <CardContent>
                 <Form {...form}>
