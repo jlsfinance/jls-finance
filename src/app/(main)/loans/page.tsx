@@ -16,21 +16,39 @@ import autoTable from 'jspdf-autotable';
 
 const formatCurrency = (value: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(value);
 
-const addPdfSection = (doc: jsPDF, startY: number, title: string, details: { [key: string]: any }) => {
-  let y = startY;
-  doc.setFontSize(12);
-  doc.setFont("helvetica", "bold");
-  doc.text(title, 14, y);
-  y += 7;
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
-  Object.entries(details).forEach(([key, value]) => {
-    doc.text(`${key}:`, 20, y);
-    doc.text(String(value || 'N/A'), 70, y);
-    y += 6;
-  });
-  y += 4;
-  return y; // Return the new Y position
+const toWords = (num: number): string => {
+    const a = ['', 'one ', 'two ', 'three ', 'four ', 'five ', 'six ', 'seven ', 'eight ', 'nine ', 'ten ', 'eleven ', 'twelve ', 'thirteen ', 'fourteen ', 'fifteen ', 'sixteen ', 'seventeen ', 'eighteen ', 'nineteen '];
+    const b = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+    const inWords = (n: number) => {
+        let str = '';
+        if (n > 99) {
+            str += a[Math.floor(n / 100)] + 'hundred ';
+            n %= 100;
+        }
+        if (n > 19) {
+            str += b[Math.floor(n / 10)] + (a[n % 10] ? ' ' + a[n % 10] : '');
+        } else {
+            str += a[n];
+        }
+        return str;
+    };
+    let words = '';
+    if (num >= 10000000) {
+        words += inWords(Math.floor(num / 10000000)) + 'crore ';
+        num %= 10000000;
+    }
+    if (num >= 100000) {
+        words += inWords(Math.floor(num / 100000)) + 'lakh ';
+        num %= 100000;
+    }
+    if (num >= 1000) {
+        words += inWords(Math.floor(num / 1000)) + 'thousand ';
+        num %= 1000;
+    }
+    if (num > 0) {
+      words += inWords(num);
+    }
+    return words.replace(/\s+/g, ' ').trim().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 };
 
 export default function LoansPage() {
@@ -113,74 +131,94 @@ export default function LoansPage() {
       const doc = new jsPDF();
       let y = 20;
 
+      doc.setFont("helvetica", "bold");
       doc.setFontSize(18);
-      doc.setFont("helvetica", "bold");
       doc.text("JLS FINANCE LTD", 105, y, { align: 'center' });
-      y += 10;
-      doc.setFontSize(14);
-      doc.setFont("helvetica", "normal");
-      doc.text("Loan Agreement", 105, y, { align: 'center' });
-      
-      if (customer.photo_url) {
-        try {
-            const response = await fetch(`https://images.weserv.nl/?url=${encodeURIComponent(customer.photo_url)}`);
-            const blob = await response.blob();
-            const reader = new FileReader();
-            const imgData = await new Promise<string>((resolve, reject) => {
-                reader.onload = () => resolve(reader.result as string);
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
-            });
-            doc.addImage(imgData, 'JPEG', 165, 15, 30, 30);
-        } catch (e) {
-            console.error("Failed to add image to PDF:", e);
-        }
-      }
-      y += 25; // Adjust y-position to account for header and potential photo
+      y += 15;
 
-      y = addPdfSection(doc, y, "Customer Details", { "Full Name": customer.name, "Address": customer.address });
-      y = addPdfSection(doc, y, "KYC Details", { "Aadhaar": customer.aadhaar, "PAN": customer.pan, "Voter ID": customer.voter_id });
-      if (customer.guarantor?.name) {
-          y = addPdfSection(doc, y, "Guarantor Details", {
-              "Name": customer.guarantor.name,
-              "Address": customer.guarantor.address,
-              "Mobile": customer.guarantor.mobile,
-              "Relation": customer.guarantor.relation
-          });
-      }
-      y = addPdfSection(doc, y, "Loan Information", {
-        "Loan ID": loan.id,
-        "Loan Amount": formatCurrency(loan.amount),
-        "Interest Rate": `${loan.interestRate}% p.a.`,
-        "Tenure": `${loan.tenure} Months`,
-        "EMI Amount": formatCurrency(loan.emi),
-        "Disbursement Date": loan.disbursalDate || 'N/A'
-      });
+      doc.setFontSize(14);
+      doc.text("LOAN AGREEMENT", 105, y, { align: 'center' });
+      y += 15;
+
+      doc.setFont("times", "normal");
+      doc.setFontSize(11);
+      doc.setTextColor(33, 33, 33);
+      doc.text(`Date: ${loan.disbursalDate || new Date().toLocaleDateString('en-GB')}`, 14, y);
+      y += 10;
       
-      doc.setFontSize(12);
-      doc.setFont("helvetica", "bold");
-      doc.text("Terms and Conditions", 14, y);
-      y+= 7;
-      doc.setFontSize(8);
-      doc.setFont("helvetica", "normal");
-      const terms = [
-          "1. The borrower agrees to repay the loan amount as per the EMI schedule.",
-          "2. Any delay in EMI payment will attract a penal interest of 2% per month.",
-          "3. All disputes are subject to local jurisdiction.",
-          "4. This agreement is digitally executed and is legally binding."
+      doc.setFont(undefined, "bold");
+      doc.text("Lender:", 14, y);
+      doc.setFont(undefined, "normal");
+      doc.text("Mr. JLS FINANCE LTD", 20, y + 5);
+      y += 15;
+
+      doc.setFont(undefined, "bold");
+      doc.text("Borrower:", 14, y);
+      doc.setFont(undefined, "normal");
+      const borrowerDetails = [
+          `Mr./Ms. ${customer.name}`,
+          `Address: ${customer.address || 'N/A'}`
       ];
-      terms.forEach(term => {
-          const splitText = doc.splitTextToSize(term, 170);
-          doc.text(splitText, 20, y);
-          y += (splitText.length * 4) + 2;
-      });
+      doc.text(borrowerDetails, 20, y + 5);
+      y += 15;
+
+      const addSection = (title: string, content: string | string[], startY: number) => {
+          let currentY = startY;
+          doc.setFont(undefined, "bold");
+          doc.text(title, 14, currentY);
+          currentY += 7;
+          doc.setFont(undefined, "normal");
+          const splitContent = Array.isArray(content) ? content.flatMap(line => doc.splitTextToSize(line, 180)) : doc.splitTextToSize(content, 180);
+          doc.text(splitContent, 14, currentY);
+          currentY += splitContent.length * 5 + 5;
+          return currentY;
+      }
+      
+      y = addSection("1. Loan Amount:", `INR ${loan.amount.toLocaleString('en-IN')} (Rupees ${toWords(loan.amount)} Only) to be repaid as per terms below.`, y);
+      
+      const totalRepayment = loan.emi * loan.tenure;
+      const repaymentDetails = [
+           `- Flat interest: ${loan.interestRate}% p.a.`,
+           `- Total repayment: INR ${totalRepayment.toLocaleString('en-IN')}`,
+           `- To be paid in ${loan.tenure} monthly installments of INR ${loan.emi.toLocaleString('en-IN')} each.`,
+           `- First EMI due on the 1st of the next month post-disbursement.`,
+           `- No penalty on prepayment.`,
+           `- Delayed payments will accrue interest, penalty, and extra charges.`
+      ];
+      y = addSection("2. Interest & Repayment:", repaymentDetails.join('\n'), y);
+
+      y = addSection("3. Security:", "Unsecured loan. No collateral involved.", y);
+      
+      if (customer.guarantor?.name) {
+          const guarantorDetails = `Guarantor Name: ${customer.guarantor.name}\nGuarantor Address: ${customer.guarantor.address || 'N/A'}`;
+          y = addSection("4. Guarantor:", guarantorDetails, y);
+      }
+
+      y = addSection("5. Default:", "In case of default, the full amount becomes due immediately. Legal action may be taken.", y);
+      
+      const miscDetails = [
+        `- Any changes must be in writing and signed by both parties.`,
+        `- Notices to be sent via email or registered post.`,
+        `- This Agreement is governed by Indian law.`
+      ];
+      y = addSection("6. Miscellaneous:", miscDetails.join('\n'), y);
+      
+      y += 10;
+
+      doc.text("Lender:", 20, y);
+      doc.text("Borrower:", 130, y);
       y += 20;
 
-      doc.text("_________________________", 20, y);
-      doc.text("_________________________", 120, y);
-      y += 5;
-      doc.text("Borrower's Signature", 20, y);
-      doc.text("For JLS FINANCE LTD", 120, y);
+      doc.text("(Sign) ____________________", 20, y);
+      doc.text("(Sign) ____________________", 130, y);
+      y += 7;
+
+      doc.text("Name: JLS FINANCE LTD", 20, y);
+      doc.text(`Name: ${customer.name}`, 130, y);
+      y += 7;
+
+      doc.text("Date: _______________", 20, y);
+      doc.text("Date: _______________", 130, y);
 
       const pdfBlob = doc.output('blob');
       setCurrentPdfBlob(pdfBlob);
