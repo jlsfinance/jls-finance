@@ -13,7 +13,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Search, PlusCircle, Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { useToast } from "@/hooks/use-toast";
 
 interface Customer {
   id: string;
@@ -27,12 +26,13 @@ interface Customer {
 export default function CustomerListPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const { toast } = useToast();
 
   useEffect(() => {
     const fetchCustomers = async () => {
       setLoading(true);
+      setError(null);
       try {
         const q = query(collection(db, "customers"), orderBy("createdAt", "desc"));
         const querySnapshot = await getDocs(q);
@@ -41,20 +41,16 @@ export default function CustomerListPage() {
           ...doc.data()
         })) as Customer[];
         setCustomers(customersData);
-      } catch (error) {
-        console.error("Error fetching customers: ", error);
-        toast({
-          variant: "destructive",
-          title: "Failed to load customers",
-          description: "Could not fetch customer list from Firestore. Please check your Firestore security rules or for errors in the console.",
-        });
+      } catch (err: any) {
+        console.error("Error fetching customers: ", err);
+        setError(err.message || "Failed to fetch customers. Please check Firestore security rules and console for errors.");
       } finally {
         setLoading(false);
       }
     };
 
     fetchCustomers();
-  }, [toast]);
+  }, []);
   
   const filteredCustomers = useMemo(() => {
     return customers.filter(customer =>
@@ -107,47 +103,54 @@ export default function CustomerListPage() {
                 </TableHeader>
                 <TableBody>
                     {loading ? (
-                    <TableRow>
-                        <TableCell colSpan={4} className="h-24 text-center">
-                            <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
-                        </TableCell>
-                    </TableRow>
+                      <TableRow>
+                          <TableCell colSpan={4} className="h-24 text-center">
+                              <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+                          </TableCell>
+                      </TableRow>
+                    ) : error ? (
+                      <TableRow>
+                          <TableCell colSpan={4} className="h-24 text-center text-destructive">
+                              <p className="font-semibold">⚠️ Error Loading Customers</p>
+                              <p className="text-sm text-muted-foreground">{error}</p>
+                          </TableCell>
+                      </TableRow>
                     ) : filteredCustomers.length > 0 ? (
-                    filteredCustomers.map((customer) => (
-                        <TableRow key={customer.id}>
-                        <TableCell className="font-medium">
-                            <div className="flex items-center gap-3">
-                            <Avatar>
-                                <AvatarImage src={customer.photo_url} alt={customer.name} data-ai-hint="person photo" />
-                                <AvatarFallback>{(customer.name || 'C').charAt(0)}</AvatarFallback>
-                            </Avatar>
-                            <span>{customer.name}</span>
-                            </div>
-                        </TableCell>
-                        <TableCell>
-                            <div>
-                                <p>{customer.mobile}</p>
-                                <p className="text-muted-foreground text-xs">{customer.email}</p>
-                            </div>
-                        </TableCell>
-                        <TableCell>
-                            <Badge variant={customer.status === 'Active' ? 'default' : 'secondary'} className={customer.status === 'Active' ? 'bg-accent text-accent-foreground' : ''}>
-                                {customer.status}
-                            </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                            <Button asChild variant="outline" size="sm">
-                                <Link href={`/customers/${customer.id}`}>View Details</Link>
-                            </Button>
-                        </TableCell>
-                        </TableRow>
-                    ))
+                      filteredCustomers.map((customer) => (
+                          <TableRow key={customer.id}>
+                          <TableCell className="font-medium">
+                              <div className="flex items-center gap-3">
+                              <Avatar>
+                                  <AvatarImage src={customer.photo_url} alt={customer.name} data-ai-hint="person photo" />
+                                  <AvatarFallback>{(customer.name || 'C').charAt(0)}</AvatarFallback>
+                              </Avatar>
+                              <span>{customer.name}</span>
+                              </div>
+                          </TableCell>
+                          <TableCell>
+                              <div>
+                                  <p>{customer.mobile}</p>
+                                  <p className="text-muted-foreground text-xs">{customer.email}</p>
+                              </div>
+                          </TableCell>
+                          <TableCell>
+                              <Badge variant={customer.status === 'Active' ? 'default' : 'secondary'} className={customer.status === 'Active' ? 'bg-accent text-accent-foreground' : ''}>
+                                  {customer.status}
+                              </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                              <Button asChild variant="outline" size="sm">
+                                  <Link href={`/customers/${customer.id}`}>View Details</Link>
+                              </Button>
+                          </TableCell>
+                          </TableRow>
+                      ))
                     ) : (
-                    <TableRow>
-                        <TableCell colSpan={4} className="text-center h-24">
-                            No customers found.
-                        </TableCell>
-                    </TableRow>
+                      <TableRow>
+                          <TableCell colSpan={4} className="text-center h-24">
+                              No customers found. Have you added any yet?
+                          </TableCell>
+                      </TableRow>
                     )}
                 </TableBody>
                 </Table>
