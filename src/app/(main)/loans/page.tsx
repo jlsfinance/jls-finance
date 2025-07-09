@@ -371,7 +371,7 @@ export default function LoansPage() {
                   </TableCell>
                   <TableCell>
                       <Button variant="link" size="sm" asChild>
-                          <Link href={`/loans/${loan.id}`}>View Details</Link>
+                          <Link href={`/loans/details?id=${loan.id}`}>View Details</Link>
                       </Button>
                   </TableCell>
                   <TableCell>

@@ -1,10 +1,10 @@
 "use client"
+
 import { useState } from "react"
-import { db } from "@/lib/firebase"
-import { addDoc, collection } from "firebase/firestore"
+import { useRouter } from "next/navigation"
+import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { useRouter } from "next/navigation"
 
 export default function NewCustomerPage() {
   const router = useRouter()
@@ -25,10 +25,13 @@ export default function NewCustomerPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      await addDoc(collection(db, "customers"), {
+      const { error } = await supabase.from("customers").insert([{
         ...formData,
-        createdAt: new Date()
-      })
+        created_at: new Date(),
+      }])
+
+      if (error) throw error
+
       alert("✅ ग्राहक सफलतापूर्वक सेव हो गया")
       router.push("/customers")
     } catch (error) {
