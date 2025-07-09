@@ -8,7 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import { auth, db, isFirebaseInitialized } from "@/lib/firebase";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +17,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import { FirebaseNotConfigured } from "@/components/FirebaseNotConfigured";
 
 const registerSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
@@ -47,7 +48,19 @@ export default function RegisterPage() {
     },
   });
 
+  if (!isFirebaseInitialized) {
+    return <FirebaseNotConfigured />;
+  }
+
   const onSubmit = async (data: RegisterFormValues) => {
+    if (!auth || !db) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Firebase is not configured correctly.",
+      });
+      return;
+    }
     setLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);

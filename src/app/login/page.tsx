@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { auth, db } from "@/lib/firebase";
+import { auth, db, isFirebaseInitialized } from "@/lib/firebase";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 
@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import { FirebaseNotConfigured } from "@/components/FirebaseNotConfigured";
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
@@ -32,12 +33,24 @@ export default function LoginPage() {
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: "admin@jls.com",
-      password: "password",
+      email: "",
+      password: "",
     },
   });
 
+  if (!isFirebaseInitialized) {
+    return <FirebaseNotConfigured />;
+  }
+
   const onSubmit = async (data: LoginFormValues) => {
+    if (!auth || !db) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Firebase is not configured correctly.",
+      });
+      return;
+    }
     setLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);

@@ -2,15 +2,21 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
-import { auth } from '@/lib/firebase';
+import { auth, isFirebaseInitialized } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
+import { FirebaseNotConfigured } from './FirebaseNotConfigured';
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
 
+  if (!isFirebaseInitialized) {
+    return <FirebaseNotConfigured />;
+  }
+
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    // Auth object is guaranteed to be available if isFirebaseInitialized is true
+    const unsubscribe = onAuthStateChanged(auth!, (user) => {
       if (user) {
         // User is signed in.
         // You could also fetch user role from Firestore here if needed.

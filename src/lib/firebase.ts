@@ -1,19 +1,36 @@
 // File: src/lib/firebase.ts
-import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
-import { getAuth } from "firebase/auth";
+import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
+import { getFirestore, type Firestore } from "firebase/firestore";
+import { getStorage, type FirebaseStorage } from "firebase/storage";
+import { getAuth, type Auth } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyC49_jV4MSzJzS7qfA_yU5v8s1wO3T_R2g",
-  authDomain: "jls-finance-company.firebaseapp.com",
-  projectId: "jls-finance-company",
-  storageBucket: "jls-finance-company.appspot.com",
-  messagingSenderId: "550122742532",
-  appId: "1:550122742532:web:542c5c87803b3d112ce651"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
 };
 
-const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
-export const auth = getAuth(app);
+let app: FirebaseApp | undefined;
+let auth: Auth | undefined;
+let db: Firestore | undefined;
+let storage: FirebaseStorage | undefined;
+let isFirebaseInitialized = false;
+
+if (firebaseConfig.apiKey && firebaseConfig.projectId) {
+    try {
+        app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+        auth = getAuth(app);
+        db = getFirestore(app);
+        storage = getStorage(app);
+        isFirebaseInitialized = true;
+    } catch(e) {
+        console.error("Failed to initialize Firebase", e);
+    }
+} else {
+    console.warn("Firebase configuration is missing or invalid. To resolve this, create a .env.local file in the project root with your Firebase project's configuration keys. Ensure you restart the development server after creating the file.");
+}
+
+export { db, storage, auth, isFirebaseInitialized };

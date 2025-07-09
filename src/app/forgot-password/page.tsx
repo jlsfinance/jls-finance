@@ -6,7 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { sendPasswordResetEmail } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { auth, isFirebaseInitialized } from "@/lib/firebase";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import { FirebaseNotConfigured } from "@/components/FirebaseNotConfigured";
 
 const forgotPasswordSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email address." }),
@@ -33,7 +34,19 @@ export default function ForgotPasswordPage() {
     },
   });
 
+  if (!isFirebaseInitialized) {
+    return <FirebaseNotConfigured />;
+  }
+
   const onSubmit = async (data: ForgotPasswordFormValues) => {
+    if (!auth) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Firebase is not configured correctly.",
+      });
+      return;
+    }
     setLoading(true);
     try {
       await sendPasswordResetEmail(auth, data.email);
