@@ -11,22 +11,24 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogTrigger, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { supabase } from '@/lib/supabase';
+import { db, storage } from "@/lib/firebase";
+import { doc, getDoc } from 'firebase/firestore';
+import { ref, getDownloadURL } from 'firebase/storage';
 
 interface Customer {
   id: string;
   name: string;
-  email: string;
-  phone: string; // Changed from mobile
-  aadhaar: string;
-  pan: string;
+  email: string | null;
+  phone: string;
+  aadhaar?: string;
+  pan?: string;
   status: string;
   address: string;
   city: string;
   state: string;
   pincode: string;
-  photo: string;
-  photoUrl?: string;
+  photo: string; // This is the path in Firebase Storage
+  photoUrl?: string; // This will be the public URL
 }
 
 export default function CustomerDetailsPage() {
@@ -40,32 +42,38 @@ export default function CustomerDetailsPage() {
   useEffect(() => {
     const fetchCustomer = async () => {
       if (customerId) {
+        setLoading(true);
         try {
-          setLoading(true);
-          const { data, error } = await supabase
-            .from('customers')
-            .select('*')
-            .eq('id', customerId)
-            .single();
+          const customerRef = doc(db, 'customers', customerId);
+          const docSnap = await getDoc(customerRef);
 
-          if (error) throw error;
-          
-          if (data) {
-              let photoUrl = 'https://placehold.co/400x400.png';
-              if (data.photo) {
-                const { data: photoData } = supabase.storage
-                  .from('customer-photos')
-                  .getPublicUrl(data.photo);
-                  photoUrl = photoData.publicUrl;
-              }
-              setCustomer({ ...data, photoUrl });
+          if (!docSnap.exists()) {
+            throw new Error("Customer not found");
           }
+          
+          const data = docSnap.data() as Omit<Customer, 'id'>;
+          let photoUrl = 'https://placehold.co/400x400.png';
+          if (data.photo) {
+            try {
+              const photoRef = ref(storage, data.photo);
+              photoUrl = await getDownloadURL(photoRef);
+            } catch (storageError) {
+                console.error("Could not fetch photo from Firebase Storage:", storageError);
+                toast({
+                    variant: "destructive",
+                    title: "Image Load Failed",
+                    description: "The customer photo could not be loaded.",
+                });
+            }
+          }
+          setCustomer({ id: docSnap.id, ...data, photoUrl });
+
         } catch (error: any) {
           console.error("Failed to load customer:", error);
           toast({
             variant: "destructive",
             title: "Load Failed",
-            description: "Could not load customer profile.",
+            description: "Could not load customer profile from Firestore.",
           });
         } finally {
           setLoading(false);

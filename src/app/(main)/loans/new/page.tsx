@@ -14,7 +14,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Loader2 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { db } from "@/lib/firebase";
+import { addDoc, collection } from "firebase/firestore";
 import { useAuth } from "@/context/AuthContext";
 
 const loanApplicationSchema = z.object({
@@ -74,42 +75,40 @@ export default function NewLoanPage() {
     }
     setIsSubmitting(true);
     try {
-      // 1. Create Customer in Supabase
-      const { data: customerData, error: customerError } = await supabase.from("customers").insert({
+      // 1. Create Customer in Firestore
+      const customerDocRef = await addDoc(collection(db, "customers"),{
         name: data.name,
         phone: data.mobile,
         email: data.email,
         address: data.address,
         aadhaar: data.aadhaar,
         pan: data.pan,
-        voter_id: data.voter_id,
+        voterId: data.voter_id,
         guarantor: data.guarantor,
         status: "Active",
-        created_by: user.uid,
-      }).select().single();
-
-      if (customerError) throw customerError;
+        createdBy: user.uid,
+        createdAt: new Date().toISOString()
+      });
       
-      const newCustomerId = customerData.id;
+      const newCustomerId = customerDocRef.id;
       
-      // 2. Create Loan in Supabase
+      // 2. Create Loan in Firestore
       const processingFee = (data.amount * data.processingFeePercentage) / 100;
       const monthlyInterestRate = data.interestRate / 12 / 100;
       const emi = (data.amount * monthlyInterestRate * Math.pow(1 + monthlyInterestRate, data.tenure)) / (Math.pow(1 + monthlyInterestRate, data.tenure) - 1);
       
-      const { error: loanError } = await supabase.from("loans").insert({
-        customer_id: newCustomerId,
-        customer_name: data.name,
+      await addDoc(collection(db, "loans"),{
+        customerId: newCustomerId,
+        customerName: data.name,
         amount: data.amount,
-        interest_rate: data.interestRate,
+        interestRate: data.interestRate,
         tenure: data.tenure,
-        processing_fee_percentage: data.processingFeePercentage,
-        processing_fee: Math.round(processingFee),
+        processingFeePercentage: data.processingFeePercentage,
+        processingFee: Math.round(processingFee),
         emi: Math.round(emi),
         status: "Pending",
+        date: new Date().toISOString().split('T')[0], // Application date
       });
-
-      if (loanError) throw loanError;
 
       toast({
         title: "✅ Application Submitted",

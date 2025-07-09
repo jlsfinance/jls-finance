@@ -1,7 +1,7 @@
 
 "use client"
 
-import { useState } from "react"
+import React, { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -9,14 +9,7 @@ import { z } from "zod"
 import { useToast } from "@/hooks/use-toast"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form"
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -25,8 +18,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
 import { format } from "date-fns"
-import React from "react"
-import { supabase } from "@/lib/supabase"
+import { db, storage } from "@/lib/firebase"
+import { addDoc, collection } from "firebase/firestore"
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useAuth } from "@/context/AuthContext"
 
@@ -37,7 +31,7 @@ const formSchema = z.object({
   gender: z.string({ required_error: "Please select a gender." }),
   maritalStatus: z.string({ required_error: "Please select a marital status." }),
   fatherName: z.string().min(2, { message: "Father's/Spouse's name is required." }),
-  
+
   // Contact Info
   address: z.string().min(10, { message: "Address must be at least 10 characters." }),
   city: z.string().min(2, { message: "City is required." }),
@@ -45,19 +39,19 @@ const formSchema = z.object({
   pincode: z.string().length(6, { message: "Pincode must be 6 digits." }),
   mobile: z.string().length(10, { message: "A valid 10-digit mobile number is required." }),
   email: z.string().email("Please enter a valid email.").optional().or(z.literal('')),
-  
+
   // KYC Docs
   photo: z.instanceof(FileList).refine(files => files?.length >= 1, "Photo is required."),
-  aadhaar: z.any().optional(),
-  pan: z.any().optional(),
+  aadhaar: z.any().optional(), // We'll just store the number for now
+  pan: z.any().optional(), // We'll just store the number for now
 });
 
 export default function NewCustomerPage() {
     const router = useRouter();
     const { toast } = useToast();
     const { user } = useAuth();
-    const [photoPreview, setPhotoPreview] = React.useState<string | null>(null);
-    const [isSubmitting, setIsSubmitting] = React.useState(false);
+    const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
@@ -86,36 +80,31 @@ export default function NewCustomerPage() {
       const photoFile = values.photo?.[0];
 
       if (photoFile) {
-        // Use a unique file path including user id and timestamp
-        const filePath = `${user.uid}/${Date.now()}_${photoFile.name}`;
-        const { error: uploadError } = await supabase.storage.from('customer-photos').upload(filePath, photoFile);
-        if (uploadError) throw uploadError;
-        photoPath = filePath;
+        const filePath = `customer-photos/${user.uid}/${Date.now()}_${photoFile.name}`;
+        const storageRef = ref(storage, filePath);
+        await uploadBytes(storageRef, photoFile);
+        photoPath = filePath; // Store the path, not the full URL
       }
-      
-      const { data, error } = await supabase.from('customers').insert([
-        { 
+
+      await addDoc(collection(db, 'customers'), {
           name: values.fullName,
           dob: format(values.dob, "yyyy-MM-dd"),
           gender: values.gender,
-          marital_status: values.maritalStatus,
-          father_name: values.fatherName,
+          maritalStatus: values.maritalStatus,
+          fatherName: values.fatherName,
           address: values.address,
           city: values.city,
           state: values.state,
           pincode: values.pincode,
           phone: values.mobile,
-          email: values.email || undefined,
+          email: values.email || null,
           photo: photoPath,
           status: 'Active',
-          created_by: user.uid,
-          // Storing Aadhaar and PAN numbers will happen in a separate step or table in a real app
-          // For now we assume they are uploaded, but we are not storing the document paths yet.
-        }
-      ]).select().single();
+          createdBy: user.uid,
+          createdAt: new Date().toISOString(),
+          // For simplicity, not storing document numbers yet. Could be added here.
+      });
 
-      if (error) throw error;
-      
       toast({
         title: "✅ Customer Registered",
         description: `${values.fullName} has been successfully added.`,
@@ -150,7 +139,7 @@ export default function NewCustomerPage() {
                         <TabsTrigger value="personal">Personal & Contact Info</TabsTrigger>
                         <TabsTrigger value="documents">KYC Documents & Photo</TabsTrigger>
                     </TabsList>
-                    
+
                     <TabsContent value="personal" className="mt-6">
                         <div className="space-y-8">
                             {/* Personal Details */}
@@ -230,7 +219,7 @@ export default function NewCustomerPage() {
                                   name="aadhaar"
                                   render={({ field: { onChange, value, ...rest } }) => (
                                       <FormItem>
-                                      <FormLabel>Aadhaar Card</FormLabel>
+                                      <FormLabel>Aadhaar Card (File)</FormLabel>
                                       <FormControl>
                                           <Input
                                           type="file"
@@ -241,7 +230,7 @@ export default function NewCustomerPage() {
                                           />
                                       </FormControl>
                                       <FormDescription>
-                                          Upload front and back as a single PDF.
+                                          Optional document upload.
                                       </FormDescription>
                                       <FormMessage />
                                       </FormItem>
@@ -252,7 +241,7 @@ export default function NewCustomerPage() {
                                   name="pan"
                                   render={({ field: { onChange, value, ...rest } }) => (
                                       <FormItem>
-                                      <FormLabel>PAN Card</FormLabel>
+                                      <FormLabel>PAN Card (File)</FormLabel>
                                       <FormControl>
                                           <Input
                                           type="file"
@@ -262,6 +251,9 @@ export default function NewCustomerPage() {
                                           {...rest}
                                           />
                                       </FormControl>
+                                       <FormDescription>
+                                          Optional document upload.
+                                      </FormDescription>
                                       <FormMessage />
                                       </FormItem>
                                   )}
@@ -273,10 +265,10 @@ export default function NewCustomerPage() {
                               name="photo"
                               render={({ field }) => (
                                   <FormItem>
-                                      <FormLabel>Upload Customer Photo</FormLabel>
+                                      <FormLabel>Upload Customer Photo *</FormLabel>
                                       <FormControl>
-                                          <Input 
-                                              type="file" 
+                                          <Input
+                                              type="file"
                                               accept="image/png, image/jpeg, image/jpg"
                                               {...fileRef}
                                               onChange={(event) => {
@@ -314,7 +306,6 @@ export default function NewCustomerPage() {
                         </div>
                     </TabsContent>
                     </Tabs>
-
                     <div className="mt-8 flex justify-end">
                         <Button type="submit" className="bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isSubmitting}>
                             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

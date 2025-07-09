@@ -7,7 +7,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Search, PlusCircle, FileDown, Loader2 } from "lucide-react"
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
+import { collection, getDocs } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast"
 
 interface Customer {
@@ -17,7 +18,7 @@ interface Customer {
   email: string;
   address: string;
   status: string;
-  photo_url: string;
+  photo?: string; // photo path, not URL
 }
 
 export default function CustomersPage() {
@@ -30,23 +31,16 @@ export default function CustomersPage() {
     const fetchCustomers = async () => {
       setLoading(true);
       try {
-        const { data: customerData, error } = await supabase
-          .from('customers')
-          .select('*')
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
-        
-        if (customerData) {
-          setCustomers(customerData);
-        }
+        const querySnapshot = await getDocs(collection(db, "customers"));
+        const customerData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Customer[];
+        setCustomers(customerData);
 
       } catch (error: any) {
         console.error("Failed to fetch customers:", error);
         toast({
           variant: "destructive",
           title: "Fetch Failed",
-          description: "Could not load customers from the database.",
+          description: "Could not load customers from Firestore.",
         });
       } finally {
         setLoading(false);
@@ -63,6 +57,8 @@ export default function CustomersPage() {
       (customer.phone && customer.phone.includes(searchTerm))
     );
   }, [searchTerm, customers])
+  
+  const placeholderImage = 'https://placehold.co/40x40.png';
 
   return (
     <div className="space-y-6">
@@ -108,7 +104,7 @@ export default function CustomersPage() {
                 <TableRow>
                   <TableCell colSpan={5} className="text-center h-24">
                     <Loader2 className="mx-auto h-6 w-6 animate-spin" />
-                    <p>Loading customers from Supabase...</p>
+                    <p>Loading customers...</p>
                   </TableCell>
                 </TableRow>
               ) : filteredCustomers.length > 0 ? filteredCustomers.map((customer) => (
@@ -116,7 +112,8 @@ export default function CustomersPage() {
                   <TableCell>
                       <div className="flex items-center gap-3">
                           <Avatar>
-                              <AvatarImage src={customer.photo_url} alt={customer.name} />
+                              {/* Using placeholder as we don't have the full URL here */}
+                              <AvatarImage src={placeholderImage} alt={customer.name} data-ai-hint="person" />
                               <AvatarFallback>{customer.name.split(' ').map((n: string) => n[0]).join('')}</AvatarFallback>
                           </Avatar>
                           <div className="font-medium">{customer.name}</div>
@@ -130,14 +127,14 @@ export default function CustomersPage() {
                   <TableCell>{customer.status}</TableCell>
                   <TableCell>
                       <Button variant="link" size="sm" asChild>
-                          <Link href={`/customers/details?id=${customer.id}`}>View Details</Link>
+                          <Link href={`/customers/${customer.id}`}>View Details</Link>
                       </Button>
                   </TableCell>
                 </TableRow>
               )) : (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center h-24">
-                    No customers found in Supabase.
+                    No customers found.
                   </TableCell>
                 </TableRow>
               )}
