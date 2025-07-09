@@ -1,8 +1,9 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useForm, Controller } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { db } from "@/lib/firebase";
@@ -11,11 +12,12 @@ import { useToast } from "@/hooks/use-toast";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
-import { Loader2 } from "lucide-react";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Loader2, Check, ChevronsUpDown } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 
 const loanSchema = z.object({
   customerId: z.string().min(1, "Customer is required"),
@@ -37,6 +39,7 @@ export default function NewLoanPage() {
   const { toast } = useToast();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [popoverOpen, setPopoverOpen] = useState(false);
 
   const form = useForm<LoanFormValues>({
     resolver: zodResolver(loanSchema),
@@ -123,24 +126,60 @@ export default function NewLoanPage() {
                             control={form.control}
                             name="customerId"
                             render={({ field }) => (
-                                <FormItem>
-                                <Label>Customer</Label>
-                                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                    <FormControl>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select a registered customer" />
-                                    </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                    {customers.length > 0 ? (
-                                        customers.map((c) => (
-                                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                                        ))
-                                    ) : (
-                                        <SelectItem value="loading" disabled>Loading customers...</SelectItem>
-                                    )}
-                                    </SelectContent>
-                                </Select>
+                                <FormItem className="flex flex-col">
+                                <FormLabel>Customer</FormLabel>
+                                <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+                                    <PopoverTrigger asChild>
+                                        <FormControl>
+                                            <Button
+                                            variant="outline"
+                                            role="combobox"
+                                            aria-expanded={popoverOpen}
+                                            className={cn(
+                                                "w-full justify-between",
+                                                !field.value && "text-muted-foreground"
+                                            )}
+                                            >
+                                            {field.value
+                                                ? customers.find(
+                                                    (customer) => customer.id === field.value
+                                                )?.name
+                                                : "Select a registered customer"}
+                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                            </Button>
+                                        </FormControl>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                                        <Command>
+                                            <CommandInput placeholder="Search customer..." />
+                                            <CommandList>
+                                                <CommandEmpty>No customer found.</CommandEmpty>
+                                                <CommandGroup>
+                                                {customers.map((customer) => (
+                                                    <CommandItem
+                                                    value={customer.name}
+                                                    key={customer.id}
+                                                    onSelect={() => {
+                                                        form.setValue("customerId", customer.id);
+                                                        setPopoverOpen(false);
+                                                    }}
+                                                    >
+                                                    <Check
+                                                        className={cn(
+                                                        "mr-2 h-4 w-4",
+                                                        customer.id === field.value
+                                                            ? "opacity-100"
+                                                            : "opacity-0"
+                                                        )}
+                                                    />
+                                                    {customer.name}
+                                                    </CommandItem>
+                                                ))}
+                                                </CommandGroup>
+                                            </CommandList>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
                                 <FormMessage />
                                 </FormItem>
                             )}
@@ -152,7 +191,7 @@ export default function NewLoanPage() {
                                 name="amount"
                                 render={({ field }) => (
                                 <FormItem>
-                                    <Label>Loan Amount (₹)</Label>
+                                    <FormLabel>Loan Amount (₹)</FormLabel>
                                     <FormControl><Input type="number" {...field} /></FormControl>
                                     <FormMessage />
                                 </FormItem>
@@ -163,7 +202,7 @@ export default function NewLoanPage() {
                                 name="tenure"
                                 render={({ field }) => (
                                 <FormItem>
-                                    <Label>Tenure (Months)</Label>
+                                    <FormLabel>Tenure (Months)</FormLabel>
                                     <FormControl><Input type="number" {...field} /></FormControl>
                                     <FormMessage />
                                 </FormItem>
@@ -176,7 +215,7 @@ export default function NewLoanPage() {
                                 name="interestRate"
                                 render={({ field }) => (
                                 <FormItem>
-                                    <Label>Interest Rate (% p.a.)</Label>
+                                    <FormLabel>Interest Rate (% p.a.)</FormLabel>
                                     <FormControl><Input type="number" step="0.1" {...field} /></FormControl>
                                     <FormMessage />
                                 </FormItem>
@@ -187,7 +226,7 @@ export default function NewLoanPage() {
                                 name="processingFeePercentage"
                                 render={({ field }) => (
                                 <FormItem>
-                                    <Label>Processing Fee (%)</Label>
+                                    <FormLabel>Processing Fee (%)</FormLabel>
                                     <FormControl><Input type="number" step="0.1" {...field} /></FormControl>
                                     <FormMessage />
                                 </FormItem>
