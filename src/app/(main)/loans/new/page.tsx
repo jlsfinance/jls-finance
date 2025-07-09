@@ -30,7 +30,7 @@ const loanApplicationSchema = z.object({
   
   guarantor: z.object({
     name: z.string().optional(),
-    mobile: z.string().optional(),
+    mobile: z.string().length(10, "Must be a 10-digit mobile number.").optional().or(z.literal('')),
     address: z.string().optional(),
     relation: z.string().optional(),
   }).optional(),
@@ -53,14 +53,19 @@ export default function NewLoanPage() {
   const form = useForm<LoanApplicationFormValues>({
     resolver: zodResolver(loanApplicationSchema),
     defaultValues: {
-      name: "",
-      mobile: "",
+      name: "jitu maheshwari",
+      mobile: "9461612455",
       email: "",
-      address: "",
-      aadhaar: "",
-      pan: "",
-      voter_id: "",
-      guarantor: { name: "", mobile: "", address: "", relation: "" },
+      address: "kjadbkdbk",
+      aadhaar: "941382100745",
+      pan: "abcde1234r",
+      voter_id: "nzjxznxnn",
+      guarantor: { 
+          name: "snlkscnlsac", 
+          mobile: "9541234567", 
+          address: "a;mxcmlskclsmc", 
+          relation: "xaxaxax" 
+      },
       amount: 10000,
       interestRate: 12,
       tenure: 12,
