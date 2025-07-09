@@ -30,7 +30,7 @@ if (firebaseConfig.apiKey && firebaseConfig.projectId) {
         console.error("Failed to initialize Firebase", e);
     }
 } else {
-    console.warn("CRITICAL: Firebase configuration is missing or invalid. The application will not work without it. \n1. Create a `.env.local` file in the project root. \n2. Add your `NEXT_PUBLIC_` Firebase variables. \n3. RESTART the development server.");
+    console.warn("❌ Firebase Not Configured: Check if `.env.local` exists and contains all NEXT_PUBLIC_FIREBASE_... keys. Restart your dev server!");
 }
 
 export { db, storage, auth, isFirebaseInitialized };
