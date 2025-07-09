@@ -151,23 +151,25 @@ export default function LoanDetailsPage() {
     setIsDownloadingSchedule(true);
     try {
         const pdfDoc = new jsPDF();
-        const leftMargin = 15;
-
-        // Header
+        
+        const headerY = 10;
         if (JLS_LOGO_DATA_URL) {
-            pdfDoc.addImage(JLS_LOGO_DATA_URL, 'PNG', leftMargin, 15, 10, 10);
+            pdfDoc.addImage(JLS_LOGO_DATA_URL, "PNG", 10, headerY, 30, 30);
+            pdfDoc.setFontSize(16);
             pdfDoc.setFont("helvetica", "bold");
-            pdfDoc.setFontSize(14);
-            pdfDoc.text("JLS Finance Company", leftMargin + 12, 22);
+            pdfDoc.text("JLS Finance Company", 45, headerY + 15);
         }
 
         pdfDoc.setFontSize(14);
         pdfDoc.setFont("helvetica", "normal");
-        pdfDoc.text('Loan Repayment Schedule', pdfDoc.internal.pageSize.getWidth() / 2, 35, { align: 'center' });
+        pdfDoc.text('Loan Repayment Schedule', pdfDoc.internal.pageSize.getWidth() / 2, headerY + 25, { align: 'center' });
         
         pdfDoc.setFontSize(10);
-        pdfDoc.text(`Customer: ${loan.customerName}`, 15, 45);
-        pdfDoc.text(`Loan ID: ${loan.id}`, 15, 52);
+        let contentStartY = headerY + 40;
+        pdfDoc.text(`Customer: ${loan.customerName}`, 15, contentStartY);
+        contentStartY += 7;
+        pdfDoc.text(`Loan ID: ${loan.id}`, 15, contentStartY);
+        contentStartY += 8;
 
         const tableColumn = ["EMI No.", "Due Date", "Principal", "Interest", "Total EMI", "Balance After", "Paid Date", "Status", "Remark"];
         const tableRows: (string | number)[][] = [];
@@ -190,7 +192,7 @@ export default function LoanDetailsPage() {
         autoTable(pdfDoc, {
             head: [tableColumn],
             body: tableRows,
-            startY: 60,
+            startY: contentStartY,
             theme: 'grid',
             headStyles: { fillColor: [46, 154, 254] },
             styles: { font: "helvetica", fontSize: 8 },
@@ -228,14 +230,14 @@ export default function LoanDetailsPage() {
         const customerRef = doc(db, "customers", loan.customerId);
         const customerSnap = await getDoc(customerRef);
 
-        let y = 15;
-        const leftMargin = 14;
-
+        const headerY = 10;
+        let y = headerY;
+        
         if (JLS_LOGO_DATA_URL) {
-            pdfDoc.addImage(JLS_LOGO_DATA_URL, 'PNG', leftMargin, 15, 10, 10);
+            pdfDoc.addImage(JLS_LOGO_DATA_URL, "PNG", 10, headerY, 30, 30);
+            pdfDoc.setFontSize(16);
             pdfDoc.setFont("helvetica", "bold");
-            pdfDoc.setFontSize(14);
-            pdfDoc.text("JLS Finance Company", leftMargin + 12, 22);
+            pdfDoc.text("JLS Finance Company", 45, headerY + 15);
         }
         
         // Customer photo with fallback
@@ -251,18 +253,19 @@ export default function LoanDetailsPage() {
                     reader.onerror = (error) => reject(error);
                     reader.readAsDataURL(blob);
                 });
-                pdfDoc.addImage(imgData, 165, y - 5, 30, 30);
+                pdfDoc.addImage(imgData, 165, headerY, 30, 30);
             } catch (e) {
                 console.error("Could not add customer image to PDF:", e);
             }
         }
-        y=35;
+        
+        y = headerY + 25;
         pdfDoc.setFontSize(14);
         pdfDoc.setFont("helvetica", "normal");
         pdfDoc.text("Payment Receipt", 105, y, { align: 'center' });
-        y += 15;
         
-        y = Math.max(y, 60);
+        y = Math.max(y, 50);
+        y += 10;
 
         pdfDoc.setFontSize(11);
         pdfDoc.setFont("helvetica", "normal");

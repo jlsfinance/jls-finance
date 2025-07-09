@@ -139,10 +139,10 @@ export default function LoansPage() {
 
         const addHeader = (pageNumber: number) => {
             if (JLS_LOGO_DATA_URL) {
-              pdfDoc.addImage(JLS_LOGO_DATA_URL, 'PNG', leftMargin, 15, 10, 10);
+              pdfDoc.addImage(JLS_LOGO_DATA_URL, "PNG", 10, 10, 30, 30);
+              pdfDoc.setFontSize(16);
               pdfDoc.setFont("helvetica", "bold");
-              pdfDoc.setFontSize(14);
-              pdfDoc.text("JLS Finance Company", leftMargin + 12, 22);
+              pdfDoc.text("JLS Finance Company", 45, 25);
             }
             
             pdfDoc.setFontSize(14);
@@ -160,7 +160,7 @@ export default function LoansPage() {
 
         // --- PAGE 1 ---
         addHeader(1);
-        let y = 45;
+        let y = 50;
 
         if (customer.photo_url) {
             try {
@@ -272,7 +272,7 @@ export default function LoansPage() {
         // --- PAGE 2 ---
         pdfDoc.addPage();
         addHeader(2);
-        y = 45;
+        y = 50;
 
         pdfDoc.setFont(undefined, 'bold'); pdfDoc.text("Terms & Conditions", leftMargin, y); y+=10;
         pdfDoc.setFont(undefined, 'normal');
@@ -347,19 +347,18 @@ export default function LoansPage() {
         const customerSnap = await getDoc(customerRef);
         const customer = customerSnap.exists() ? customerSnap.data() : null;
 
-        let y = 15;
+        const headerY = 10;
         const pageWidth = pdfDoc.internal.pageSize.width;
-        const leftMargin = 15;
 
         if (JLS_LOGO_DATA_URL) {
-            pdfDoc.addImage(JLS_LOGO_DATA_URL, 'PNG', leftMargin, 15, 10, 10);
+            pdfDoc.addImage(JLS_LOGO_DATA_URL, "PNG", 10, headerY, 30, 30);
+            pdfDoc.setFontSize(16);
             pdfDoc.setFont("helvetica", "bold");
-            pdfDoc.setFontSize(14);
-            pdfDoc.text("JLS Finance Company", leftMargin + 12, 22);
+            pdfDoc.text("JLS Finance Company", 45, headerY + 15);
         }
         
         pdfDoc.setFontSize(12);
-        pdfDoc.text('Loan Summary Card', pageWidth / 2, 32, { align: 'center' });
+        pdfDoc.text('Loan Summary Card', pageWidth / 2, headerY + 25, { align: 'center' });
         
         if (customer?.photo_url) {
             try {
@@ -371,13 +370,13 @@ export default function LoansPage() {
                     reader.onerror = reject;
                     reader.readAsDataURL(blob);
                 });
-                pdfDoc.addImage(imgData, pageWidth - 15 - 30, 15, 30, 30);
+                pdfDoc.addImage(imgData, pageWidth - 15 - 30, headerY, 30, 30);
             } catch (e) {
                 console.error("Failed to add image to PDF:", e);
             }
         }
         
-        y = Math.max(y, 50);
+        let y = headerY + 45;
         
         const leftColX = 15;
         const rightColX = 110;
@@ -386,7 +385,6 @@ export default function LoansPage() {
         pdfDoc.setFont("helvetica", "normal");
         pdfDoc.setFontSize(10);
         
-        y += 5;
         const summary = [
             [{label: "Customer Name", value: loan.customerName}, {label: "Loan ID", value: loan.id}],
             [{label: "Loan Amount", value: formatCurrency(loan.amount)}, {label: "Interest Rate", value: `${loan.interestRate}% p.a.`}],

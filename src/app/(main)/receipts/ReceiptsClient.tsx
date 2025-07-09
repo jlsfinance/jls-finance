@@ -74,14 +74,14 @@ export default function ReceiptsClient() {
         const customerRef = doc(db, "customers", receipt.customerId);
         const customerSnap = await getDoc(customerRef);
         
-        let y = 15;
-        const leftMargin = 14;
+        const headerY = 10;
+        let y = headerY;
 
         if (JLS_LOGO_DATA_URL) {
-            pdfDoc.addImage(JLS_LOGO_DATA_URL, 'PNG', leftMargin, 15, 10, 10);
+            pdfDoc.addImage(JLS_LOGO_DATA_URL, "PNG", 10, headerY, 30, 30);
+            pdfDoc.setFontSize(16);
             pdfDoc.setFont("helvetica", "bold");
-            pdfDoc.setFontSize(14);
-            pdfDoc.text("JLS Finance Company", leftMargin + 12, 22);
+            pdfDoc.text("JLS Finance Company", 45, headerY + 15);
         }
         
         if (customerSnap.exists() && customerSnap.data().photo_url) {
@@ -96,19 +96,19 @@ export default function ReceiptsClient() {
                     reader.onerror = (error) => reject(error);
                     reader.readAsDataURL(blob);
                 });
-                pdfDoc.addImage(imgData, 165, y - 5, 30, 30);
+                pdfDoc.addImage(imgData, 165, headerY, 30, 30);
             } catch (e) {
                 console.error("Could not add customer image to PDF:", e);
             }
         }
 
-        y=35;
+        y = headerY + 25;
         pdfDoc.setFontSize(14);
         pdfDoc.setFont("helvetica", "normal");
         pdfDoc.text("Payment Receipt", 105, y, { align: 'center' });
-        y += 15;
         
-        y = Math.max(y, 60);
+        y = Math.max(y, 50);
+        y += 10;
 
         pdfDoc.setFontSize(11);
         pdfDoc.setFont("helvetica", "normal");
