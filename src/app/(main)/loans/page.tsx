@@ -173,7 +173,7 @@ export default function LoansPage() {
                     reader.onerror = reject;
                     reader.readAsDataURL(blob);
                 });
-                pdfDoc.addImage(imgData, 'JPEG', rightMargin - 30, y - 5, 30, 30);
+                pdfDoc.addImage(imgData, rightMargin - 30, y - 5, 30, 30);
             } catch (e) { console.error("Could not add customer image:", e); }
         }
 
@@ -371,7 +371,7 @@ export default function LoansPage() {
                     reader.onerror = reject;
                     reader.readAsDataURL(blob);
                 });
-                pdfDoc.addImage(imgData, 'JPEG', pageWidth - 15 - 30, 15, 30, 30);
+                pdfDoc.addImage(imgData, pageWidth - 15 - 30, 15, 30, 30);
             } catch (e) {
                 console.error("Failed to add image to PDF:", e);
             }

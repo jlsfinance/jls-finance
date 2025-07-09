@@ -96,7 +96,7 @@ export default function ReceiptsClient() {
                     reader.onerror = (error) => reject(error);
                     reader.readAsDataURL(blob);
                 });
-                pdfDoc.addImage(imgData, 'JPEG', 165, y - 5, 30, 30);
+                pdfDoc.addImage(imgData, 165, y - 5, 30, 30);
             } catch (e) {
                 console.error("Could not add customer image to PDF:", e);
             }
