@@ -130,52 +130,102 @@ export default function LoansPage() {
         }
         const customer = customerSnap.data();
 
-        let y = 20;
+        let y = 15;
+        const pageHeight = doc.internal.pageSize.height;
+        const pageWidth = doc.internal.pageSize.width;
+        const leftMargin = 15;
+        const rightMargin = pageWidth - 15;
+        const contentWidth = rightMargin - leftMargin;
 
-        // Header
+        // --- Helper function for sections ---
+        const addSection = (title: string, content: string[], startY: number): number => {
+            let currentY = startY;
+            doc.setFont(undefined, "bold");
+            doc.text(title, leftMargin, currentY);
+            currentY += 7;
+            doc.setFont(undefined, "normal");
+
+            const splitContent = content.flatMap(line => doc.splitTextToSize(line, contentWidth - 5)); // 5 for indent
+            
+            const sectionHeight = (splitContent.length * 5) + 5;
+            if (currentY + sectionHeight > pageHeight - 20) {
+                doc.addPage();
+                currentY = 20;
+            }
+
+            doc.text(splitContent, leftMargin + 5, currentY);
+            currentY += splitContent.length * 5 + 8;
+            return currentY;
+        };
+
+        // --- Page 1 Header ---
         doc.setFont("helvetica", "bold");
         doc.setFontSize(18);
-        doc.text("JLS FINANCE LTD", 105, y, { align: 'center' });
+        doc.text("JLS FINANCE LTD", pageWidth / 2, y, { align: 'center' });
         y += 10;
-
         doc.setFontSize(14);
-        doc.text("LOAN AGREEMENT", 105, y, { align: 'center' });
-        y += 10;
-        doc.setFont("times", "normal");
-        doc.setFontSize(11);
-        doc.setTextColor(33, 33, 33);
-        doc.text(`Date: ${loan.disbursalDate || new Date().toLocaleDateString('en-GB')}`, doc.internal.pageSize.getWidth() - 14, y, { align: 'right' });
-        y += 10;
-
-        // Borrower & KYC Details (2-column)
-        const leftColumnYStart = y;
-        doc.setFont(undefined, "bold");
-        doc.text("Borrower Details", 14, y);
+        doc.text("LOAN AGREEMENT", pageWidth / 2, y, { align: 'center' });
         y += 7;
+        doc.setFontSize(10);
+        doc.setFont("times", "normal");
+        doc.text(`Date: ${loan.disbursalDate || new Date().toLocaleDateString('en-GB')}`, rightMargin, y, { align: 'right' });
+        y += 5;
+
+        // --- Customer Photo ---
+        if (customer.photo_url) {
+            try {
+                const imageUrl = `https://images.weserv.nl/?url=${encodeURIComponent(customer.photo_url)}`;
+                const response = await fetch(imageUrl);
+                const blob = await response.blob();
+                const reader = new FileReader();
+                const imgData = await new Promise<string>((resolve, reject) => {
+                    reader.onload = () => resolve(reader.result as string);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+                doc.addImage(imgData, 'JPEG', rightMargin - 30, 15, 30, 30);
+            } catch (e) {
+                console.error("Could not add customer image to PDF:", e);
+            }
+        }
+        
+        y = Math.max(y, 50);
+        doc.line(leftMargin, y, rightMargin, y);
+        y += 8;
+
+        // --- Two Column Layout ---
+        let leftY = y;
+        let rightY = y;
+        const midPoint = pageWidth / 2 + 5;
+
+        // Left Column: Borrower Details
+        doc.setFont(undefined, "bold");
+        doc.text("Borrower Details", leftMargin, leftY);
+        leftY += 7;
         doc.setFont(undefined, "normal");
 
         const borrowerInfo: { label: string, value: string }[] = [
-            { label: "Borrower Name", value: customer.name || 'N/A' },
-            { label: "Father/Husband", value: customer.guardianName || 'N/A' },
+            { label: "Full Name", value: customer.name || 'N/A' },
             { label: "Date of Birth", value: customer.dob || 'N/A' },
+            { label: "Gender", value: customer.gender || 'N/A' },
+            { label: "Marital Status", value: customer.maritalStatus || 'N/A' },
             { label: "Mobile No.", value: customer.mobile || 'N/A' },
             { label: "Address", value: customer.address || 'N/A' },
         ];
-
+        
         borrowerInfo.forEach(info => {
             doc.setFont(undefined, "bold");
-            doc.text(`${info.label}:`, 14, y);
+            doc.text(`${info.label}:`, leftMargin, leftY);
             doc.setFont(undefined, "normal");
-            const valueLines = doc.splitTextToSize(info.value, 80);
-            doc.text(valueLines, 50, y);
-            y += (valueLines.length * 5) + 3;
+            const valueLines = doc.splitTextToSize(info.value, (midPoint - leftMargin - 38));
+            doc.text(valueLines, leftMargin + 35, leftY);
+            leftY += (valueLines.length * 5) + 3;
         });
 
-        const rightColumnYStart = leftColumnYStart;
-        let kycY = rightColumnYStart;
+        // Right Column: KYC Details
         doc.setFont(undefined, "bold");
-        doc.text("KYC Details", 115, kycY);
-        kycY += 7;
+        doc.text("KYC Details", midPoint, rightY);
+        rightY += 7;
         doc.setFont(undefined, "normal");
 
         const kycInfo = [
@@ -186,94 +236,90 @@ export default function LoansPage() {
 
         kycInfo.forEach(info => {
             doc.setFont(undefined, "bold");
-            doc.text(`${info.label}:`, 115, kycY);
+            doc.text(`${info.label}:`, midPoint, rightY);
             doc.setFont(undefined, "normal");
-            const valueLines = doc.splitTextToSize(info.value, 65);
-            doc.text(valueLines, 140, kycY);
-            kycY += (valueLines.length * 5) + 3;
+            const valueLines = doc.splitTextToSize(info.value, (rightMargin - midPoint - 28));
+            doc.text(valueLines, midPoint + 25, rightY);
+            rightY += (valueLines.length * 5) + 3;
         });
-
-        y = Math.max(y, kycY) + 5;
-        doc.line(14, y, 196, y);
+        
+        y = Math.max(leftY, rightY) + 5;
+        doc.line(leftMargin, y, rightMargin, y);
         y += 8;
 
-        // Guarantor
-        if (customer.guarantor && customer.guarantor.name) {
-            doc.setFont(undefined, "bold");
-            doc.text("Guarantor Details", 14, y);
-            y += 7;
-            doc.setFont(undefined, "normal");
-            const guarantorInfo = [
-                { label: "Guarantor Name", value: customer.guarantor.name || 'N/A' },
-                { label: "Relation", value: customer.guarantor.relation || 'N/A' },
-                { label: "Mobile No.", value: customer.guarantor.mobile || 'N/A' },
-                { label: "Address", value: customer.guarantor.address || 'N/A' },
-            ];
-             guarantorInfo.forEach(info => {
-                doc.setFont(undefined, "bold");
-                doc.text(`${info.label}:`, 14, y);
-                doc.setFont(undefined, "normal");
-                const valueLines = doc.splitTextToSize(info.value, 140);
-                doc.text(valueLines, 50, y);
-                y += (valueLines.length * 5) + 3;
-            });
-            doc.line(14, y, 196, y);
-            y += 8;
-        }
-
-        const addSection = (title: string, content: string | string[], startY: number) => {
-            let currentY = startY;
-            doc.setFont(undefined, "bold");
-            doc.text(title, 14, currentY);
-            currentY += 7;
-            doc.setFont(undefined, "normal");
-            const lines = Array.isArray(content) ? content : [content];
-            const splitContent = lines.flatMap(line => doc.splitTextToSize(line, 180));
-            doc.text(splitContent, 14, currentY);
-            currentY += splitContent.length * 5 + 5;
-            return currentY;
-        };
-        
+        // --- Loan Details ---
         const totalRepayment = loan.emi * loan.tenure;
-        y = addSection("1. Loan Terms:", [
+        y = addSection("Loan Details", [
             `Loan Amount: ${formatCurrency(loan.amount)} (Rupees ${toWords(loan.amount)} Only)`,
-            `Interest Rate: ${loan.interestRate}% p.a. flat`,
+            `Interest Rate: ${loan.interestRate}% per annum`,
             `Tenure: ${loan.tenure} months`,
             `EMI Amount: ${formatCurrency(loan.emi)}`,
-            `Total Repayment: ${formatCurrency(totalRepayment)}`,
-            `First EMI Date: 1st of the month following disbursement.`,
-            `Prepayment: No penalty will be charged for early repayment.`,
-            `Delays: Overdue payments will attract a penalty and additional interest as per company policy.`
+            `Total Repayment Amount: ${formatCurrency(totalRepayment)}`,
+            `First EMI Date: The 1st day of the month following the disbursement date.`,
+            `Prepayment Clause: No penalty will be charged for early repayment of the loan.`,
+            `Late Payment Clause: Overdue payments will attract a penalty and additional interest as per the company's prevailing policy.`
         ], y);
         
-        y = addSection("2. Security:", "This is an unsecured personal loan. No collateral or security has been provided by the Borrower.", y);
-        y = addSection("3. Default Clause:", "In the event of default on EMI payments, the entire outstanding loan amount, including any accrued interest and charges, will become immediately due and payable. The Lender reserves the right to initiate legal proceedings to recover the outstanding dues.", y);
-        y = addSection("4. Other Terms:", [
-            "Any changes or waivers to this agreement must be documented in writing and signed by both the Lender and the Borrower.",
-            "All official notices pertaining to this agreement shall be sent to the addresses provided herein.",
-            "This agreement is governed by the laws of India. All disputes are subject to the exclusive jurisdiction of the courts in New Delhi."
-        ], y);
-
-        // Signatures
-        y = doc.internal.pageSize.height - 60;
-        doc.text("_________________________", 20, y);
-        doc.text("_________________________", 120, y);
-        y += 5;
-        doc.text("Lender (JLS FINANCE LTD)", 20, y);
-        doc.text(`Borrower: ${customer.name}`, 120, y);
-
+        // --- Guarantor Details ---
         if (customer.guarantor && customer.guarantor.name) {
-            y += 15;
-            doc.text("_________________________", 20, y);
-            y += 5;
-            doc.text(`Guarantor: ${customer.guarantor.name}`, 20, y);
+             y = addSection("Guarantor Details", [
+                `Name: ${customer.guarantor.name || 'N/A'}`,
+                `Relation to Borrower: ${customer.guarantor.relation || 'N/A'}`,
+                `Mobile No.: ${customer.guarantor.mobile || 'N/A'}`,
+                `Address: ${customer.guarantor.address || 'N/A'}`,
+            ], y);
         }
 
+        // --- Legal Clauses (Potentially on new page) ---
+        if (y > 180) {
+            doc.addPage();
+            y = 20;
+        }
+
+        y = addSection("Security Clause", ["This is an unsecured personal loan. No collateral or security has been provided by the Borrower to the Lender."], y);
+        y = addSection("Default Clause", ["In the event of default on EMI payments for a continuous period as specified in the company policy, the entire outstanding loan amount, including any accrued interest and charges, will become immediately due and payable. The Lender reserves the right to initiate legal proceedings to recover the outstanding dues."], y);
+        y = addSection("Other Terms", [
+            "Any amendments, modifications, or waivers to this agreement must be documented in writing and signed by both the Lender and the Borrower.",
+            "All official notices pertaining to this agreement shall be delivered to the addresses provided herein via registered post or a recognized courier service.",
+            "This agreement shall be governed by the laws of India. All disputes arising from this agreement are subject to the exclusive jurisdiction of the courts in New Delhi."
+        ], y);
+
+        // --- Signature Section ---
+        if (y > pageHeight - 80) {
+            doc.addPage();
+            y = 40;
+        } else {
+            y = pageHeight - 80;
+        }
+
+        doc.text("_________________________", leftMargin, y);
+        doc.text("_________________________", midPoint, y);
+        y += 5;
+        doc.setFont(undefined, "bold");
+        doc.text("Lender (JLS FINANCE LTD)", leftMargin, y);
+        doc.text(`Borrower: ${customer.name}`, midPoint, y);
+        doc.setFont(undefined, "normal");
+        y += 7;
+        doc.text(`Date: ____________________`, leftMargin, y);
+        doc.text(`Date: ____________________`, midPoint, y);
+        
+        if (customer.guarantor && customer.guarantor.name) {
+            y += 15;
+            doc.text("_________________________", leftMargin, y);
+            y += 5;
+            doc.setFont(undefined, "bold");
+            doc.text(`Guarantor: ${customer.guarantor.name}`, leftMargin, y);
+            doc.setFont(undefined, "normal");
+            y += 7;
+            doc.text(`Date: ____________________`, leftMargin, y);
+        }
+        
         const pdfBlob = doc.output('blob');
         setCurrentPdfBlob(pdfBlob);
         setPdfPreviewUrl(URL.createObjectURL(pdfBlob));
 
     } catch (error: any) {
+        console.error("PDF generation failed:", error);
         toast({ variant: "destructive", title: "PDF Generation Failed", description: error.message });
         setIsDialogOpen(false);
     } finally {
