@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 import { db } from '@/lib/firebase'
-import { collection, getDocs, query, orderBy as firestoreOrderBy, doc, getDoc } from 'firebase/firestore'
+import { collection, getDocs, query, orderBy as firestoreOrderBy, doc as firestoreDoc, getDoc } from 'firebase/firestore'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -103,15 +103,14 @@ export default function LoansPage() {
     setCurrentPdfName(`Loan_Agreement_${loan.id}.pdf`);
 
     try {
-      const doc = new jsPDF();
-
-      const customerRef = doc(db, "customers", loan.customerId);
+      const customerRef = firestoreDoc(db, "customers", loan.customerId);
       const customerSnap = await getDoc(customerRef);
       if (!customerSnap.exists()) {
         throw new Error("Customer details not found.");
       }
       const customer = customerSnap.data();
 
+      const doc = new jsPDF();
       let y = 20;
 
       doc.setFontSize(18);
@@ -202,11 +201,11 @@ export default function LoansPage() {
     setCurrentPdfName(`Loan_Card_${loan.id}.pdf`);
     
     try {
-        const doc = new jsPDF();
-        const customerRef = doc(db, "customers", loan.customerId);
+        const customerRef = firestoreDoc(db, "customers", loan.customerId);
         const customerSnap = await getDoc(customerRef);
         const customer = customerSnap.exists() ? customerSnap.data() : null;
 
+        const doc = new jsPDF();
         let y = 20;
         doc.setFontSize(16);
         doc.setFont("helvetica", "bold");
@@ -371,7 +370,8 @@ export default function LoansPage() {
 
     <Dialog open={isDialogOpen} onOpenChange={(isOpen) => {
         if (!isOpen) {
-            setPdfPreviewUrl(null); // Clean up blob URL
+            if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
+            setPdfPreviewUrl(null); 
             setCurrentPdfBlob(null);
         }
         setIsDialogOpen(isOpen);
