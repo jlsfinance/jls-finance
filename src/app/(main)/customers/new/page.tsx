@@ -6,225 +6,322 @@ import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { db } from "@/lib/firebase"
-import { collection, addDoc, query, where, getDocs } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
-import { Textarea } from "@/components/ui/textarea"
-import { Separator } from "@/components/ui/separator"
-import { Loader2 } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { CalendarIcon, Loader2 } from "lucide-react"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar } from "@/components/ui/calendar"
+import { cn } from "@/lib/utils"
+import { format } from "date-fns"
+import React from "react"
+import { supabase } from "@/lib/supabase"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
-const customerSchema = z.object({
-  name: z.string().min(2, "Full name is required."),
-  mobile: z.string().length(10, "A valid 10-digit mobile number is required."),
+const formSchema = z.object({
+  // Personal Info
+  fullName: z.string().min(2, { message: "Full name must be at least 2 characters." }),
+  dob: z.date({ required_error: "Date of birth is required." }),
+  gender: z.string({ required_error: "Please select a gender." }),
+  maritalStatus: z.string({ required_error: "Please select a marital status." }),
+  fatherName: z.string().min(2, { message: "Father's/Spouse's name is required." }),
+  
+  // Contact Info
+  address: z.string().min(10, { message: "Address must be at least 10 characters." }),
+  city: z.string().min(2, { message: "City is required." }),
+  state: z.string().min(2, { message: "State is required." }),
+  pincode: z.string().length(6, { message: "Pincode must be 6 digits." }),
+  mobile: z.string().length(10, { message: "A valid 10-digit mobile number is required." }),
   email: z.string().email("Please enter a valid email.").optional().or(z.literal('')),
-  address: z.string().optional(),
-  aadhaar: z.string().length(12, "Aadhaar must be 12 digits.").optional().or(z.literal('')),
-  pan: z.string().length(10, "PAN must be 10 characters.").optional().or(z.literal('')),
-  voter_id: z.string().optional(),
+  
+  // KYC Docs
   photo: z.instanceof(FileList).refine(files => files?.length >= 1, "Photo is required."),
-  guarantor: z.object({
-    name: z.string().optional(),
-    mobile: z.string().optional(),
-    address: z.string().optional(),
-    relation: z.string().optional(),
-  }).optional(),
+  aadhaar: z.any().optional(),
+  pan: z.any().optional(),
 });
 
-type CustomerFormValues = z.infer<typeof customerSchema>;
 
 export default function NewCustomerPage() {
-  const router = useRouter();
-  const { toast } = useToast();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  const form = useForm<CustomerFormValues>({
-    resolver: zodResolver(customerSchema),
-    defaultValues: {
-      name: "",
-      mobile: "",
-      email: "",
-      address: "",
-      aadhaar: "",
-      pan: "",
-      voter_id: "",
-      guarantor: {
-        name: "",
-        mobile: "",
-        address: "",
-        relation: "",
-      }
-    },
-  });
+    const router = useRouter();
+    const { toast } = useToast();
+    const fileRef = form.register("photo");
+    const [photoPreview, setPhotoPreview] = React.useState<string | null>(null);
+    const [isSubmitting, setIsSubmitting] = React.useState(false);
 
-  const onSubmit = async (data: CustomerFormValues) => {
+    const form = useForm<z.infer<typeof formSchema>>({
+        resolver: zodResolver(formSchema),
+        defaultValues: {
+            fullName: "",
+            fatherName: "",
+            address: "",
+            city: "",
+            state: "",
+            pincode: "",
+            mobile: "",
+            email: "",
+        },
+    });
+
+  async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true);
-    
     try {
-      // 1. Duplicate Check
-      if (data.mobile) {
-        const phoneQuery = query(collection(db, "customers"), where("mobile", "==", data.mobile));
-        const phoneSnapshot = await getDocs(phoneQuery);
-        if (!phoneSnapshot.empty) {
-          form.setError("mobile", { type: "manual", message: "This mobile number is already registered." });
-          setIsSubmitting(false);
-          return;
-        }
+      const photoFile = values.photo[0] as File;
+      const fileExt = photoFile.name.split('.').pop();
+      const filePath = `${Date.now()}-${Math.random()}.${fileExt}`;
+
+      // Upload photo to Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from('customer-photos') // Make sure you have a 'customer-photos' bucket in Supabase Storage
+        .upload(filePath, photoFile);
+
+      if (uploadError) {
+        throw uploadError;
       }
-      if (data.aadhaar) {
-          const aadhaarQuery = query(collection(db, "customers"), where("aadhaar", "==", data.aadhaar));
-          const aadhaarSnapshot = await getDocs(aadhaarQuery);
-          if (!aadhaarSnapshot.empty) {
-              form.setError("aadhaar", { type: "manual", message: "This Aadhaar number is already registered." });
-              setIsSubmitting(false);
-              return;
-          }
-      }
-
-      // 2. Upload photo to imgbb
-      let photoUrl = "";
-      const photoFile = data.photo?.[0];
-
-      if (photoFile) {
-        const formData = new FormData();
-        formData.append("key", "c9f4edabbd1fe1bc3a063e26bc6a2ecd");
-        formData.append("image", photoFile);
-
-        const response = await fetch("https://api.imgbb.com/1/upload", {
-          method: "POST",
-          body: formData,
-        });
-
-        const result = await response.json();
-
-        if (!response.ok || !result.success) {
-          toast({
-            variant: "destructive",
-            title: "❌ Image Upload Failed",
-            description: result.error?.message || "Could not upload the customer photo.",
-          });
-          setIsSubmitting(false);
-          return;
-        }
-        
-        photoUrl = result.data.url;
-      }
-
-      // 3. Prepare and save customer data to Firestore
-      const customerData = {
-        name: data.name,
-        mobile: data.mobile,
-        email: data.email,
-        address: data.address,
-        aadhaar: data.aadhaar,
-        pan: data.pan,
-        voter_id: data.voter_id,
-        guarantor: data.guarantor,
-        status: "Active",
-        createdAt: new Date().toISOString(),
-        photo_url: photoUrl
+      
+      const newCustomer = {
+        // id is generated by Supabase
+        name: values.fullName,
+        dob: format(values.dob, "yyyy-MM-dd"),
+        gender: values.gender,
+        maritalStatus: values.maritalStatus,
+        fatherName: values.fatherName,
+        address: values.address,
+        city: values.city,
+        state: values.state,
+        pincode: values.pincode,
+        mobile: values.mobile,
+        email: values.email || 'N/A',
+        aadhaar: `**** **** ${Math.floor(1000 + Math.random() * 9000)}`,
+        pan: `ABCDE${Math.floor(1000 + Math.random() * 9000)}F`,
+        status: 'Active',
+        photo: filePath, // Save the path to the photo
       };
       
-      await addDoc(collection(db, "customers"), customerData);
+      const { error: insertError } = await supabase.from('customers').insert([newCustomer]);
 
+      if (insertError) {
+        throw insertError;
+      }
+      
       toast({
         title: "✅ Customer Registered",
-        description: `${data.name} has been successfully added.`,
+        description: `${values.fullName} has been successfully added.`,
       });
       router.push("/customers");
 
-    } catch (error: any) {
-      console.error("Error saving customer:", error);
-      toast({
-        variant: "destructive",
-        title: "❌ Registration Failed",
-        description: error.message || "An unexpected error occurred.",
-      });
+    } catch(error: any) {
+        console.error("Failed to register customer:", error);
+        toast({
+            variant: "destructive",
+            title: "Registration Failed",
+            description: error.message || "Could not save the new customer. Please try again.",
+        });
     } finally {
-      setIsSubmitting(false);
+        setIsSubmitting(false);
     }
   };
 
   return (
     <div className="space-y-6">
        <h1 className="text-2xl font-headline font-semibold">New Customer Registration</h1>
-        <Card className="max-w-3xl mx-auto shadow-lg">
+        <Card className="max-w-4xl mx-auto shadow-lg">
              <CardHeader>
-                <CardTitle>Customer Details</CardTitle>
-                <CardDescription>Fill out the form to register a new customer.</CardDescription>
+                <CardTitle>Customer Registration Form</CardTitle>
+                <CardDescription>Fill out the form below to add a new customer to the system.</CardDescription>
             </CardHeader>
             <CardContent>
-                <Form {...form}>
-                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-                        
-                        <div className="space-y-4">
-                             <h3 className="text-lg font-medium text-primary">Personal Information</h3>
-                             <FormField control={form.control} name="name" render={({ field }) => (
-                                <FormItem><FormLabel>Full Name *</FormLabel><FormControl><Input placeholder="John Doe" {...field} /></FormControl><FormMessage /></FormItem>
-                             )} />
-                             <div className="grid md:grid-cols-2 gap-4">
-                                 <FormField control={form.control} name="mobile" render={({ field }) => (
-                                    <FormItem><FormLabel>Mobile Number *</FormLabel><FormControl><Input placeholder="9876543210" {...field} /></FormControl><FormMessage /></FormItem>
-                                 )} />
-                                 <FormField control={form.control} name="email" render={({ field }) => (
-                                    <FormItem><FormLabel>Email Address</FormLabel><FormControl><Input placeholder="john.d@example.com" {...field} /></FormControl><FormMessage /></FormItem>
-                                 )} />
-                             </div>
-                              <FormField control={form.control} name="address" render={({ field }) => (
-                                <FormItem><FormLabel>Full Address</FormLabel><FormControl><Textarea placeholder="123, Main Street, New Delhi" {...field} /></FormControl><FormMessage /></FormItem>
-                             )} />
-                        </div>
-
-                        <Separator />
-
-                        <div className="space-y-4">
-                            <h3 className="text-lg font-medium text-primary">KYC Details & Photo</h3>
-                            <div className="grid md:grid-cols-2 gap-4">
-                                <FormField control={form.control} name="aadhaar" render={({ field }) => (
-                                <FormItem><FormLabel>Aadhaar Number</FormLabel><FormControl><Input placeholder="12-digit number" {...field} /></FormControl><FormMessage /></FormItem>
+             <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)}>
+                    <Tabs defaultValue="personal" className="w-full">
+                    <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="personal">Personal & Contact Info</TabsTrigger>
+                        <TabsTrigger value="documents">KYC Documents & Photo</TabsTrigger>
+                    </TabsList>
+                    
+                    <TabsContent value="personal" className="mt-6">
+                        <div className="space-y-8">
+                            {/* Personal Details */}
+                            <div className="space-y-4">
+                                <h3 className="text-lg font-medium text-primary">Personal Details</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <FormField control={form.control} name="fullName" render={({ field }) => (
+                                        <FormItem><FormLabel>Full Name</FormLabel><FormControl><Input placeholder="John Doe" {...field} /></FormControl><FormMessage /></FormItem>
+                                    )} />
+                                    <FormField control={form.control} name="fatherName" render={({ field }) => (
+                                        <FormItem><FormLabel>Father's / Spouse's Name</FormLabel><FormControl><Input placeholder="Richard Roe" {...field} /></FormControl><FormMessage /></FormItem>
+                                    )} />
+                                    <FormField control={form.control} name="dob" render={({ field }) => (
+                                        <FormItem className="flex flex-col"><FormLabel>Date of Birth</FormLabel>
+                                            <Popover><PopoverTrigger asChild>
+                                                <FormControl><Button variant="outline" className={cn("pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
+                                                    {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
+                                                    <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                                </Button></FormControl>
+                                            </PopoverTrigger><PopoverContent className="w-auto p-0" align="start">
+                                                <Calendar mode="single" selected={field.value} onSelect={field.onChange} disabled={(date) => date > new Date() || date < new Date("1900-01-01")} initialFocus />
+                                            </PopoverContent></Popover><FormMessage />
+                                        </FormItem>
+                                    )} />
+                                     <FormField control={form.control} name="gender" render={({ field }) => (
+                                         <FormItem><FormLabel>Gender</FormLabel>
+                                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                                <FormControl><SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger></FormControl>
+                                                <SelectContent><SelectItem value="male">Male</SelectItem><SelectItem value="female">Female</SelectItem><SelectItem value="other">Other</SelectItem></SelectContent>
+                                            </Select><FormMessage />
+                                         </FormItem>
+                                     )} />
+                                    <FormField control={form.control} name="maritalStatus" render={({ field }) => (
+                                         <FormItem><FormLabel>Marital Status</FormLabel>
+                                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                                <FormControl><SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger></FormControl>
+                                                <SelectContent><SelectItem value="single">Single</SelectItem><SelectItem value="married">Married</SelectItem><SelectItem value="divorced">Divorced</SelectItem><SelectItem value="widowed">Widowed</SelectItem></SelectContent>
+                                            </Select><FormMessage />
+                                         </FormItem>
+                                     )} />
+                                </div>
+                            </div>
+                            {/* Contact Details */}
+                             <div className="space-y-4">
+                                <h3 className="text-lg font-medium text-primary">Contact Details</h3>
+                                <FormField control={form.control} name="address" render={({ field }) => (
+                                    <FormItem><FormLabel>Full Address</FormLabel><FormControl><Input placeholder="123, Main Street" {...field} /></FormControl><FormMessage /></FormItem>
                                 )} />
-                                <FormField control={form.control} name="pan" render={({ field }) => (
-                                <FormItem><FormLabel>PAN Number</FormLabel><FormControl><Input placeholder="10-character alphanumeric" {...field} /></FormControl><FormMessage /></FormItem>
-                                )} />
-                                <FormField control={form.control} name="voter_id" render={({ field }) => (
-                                <FormItem><FormLabel>Voter ID</FormLabel><FormControl><Input placeholder="Voter card number" {...field} /></FormControl><FormMessage /></FormItem>
-                                )} />
-                                <FormField control={form.control} name="photo" render={({ field: { onChange, value, ...rest } }) => (
-                                    <FormItem><FormLabel>Profile Photo *</FormLabel><FormControl><Input type="file" accept="image/*" onChange={(e) => onChange(e.target.files)} {...rest} /></FormControl><FormMessage /></FormItem>
-                                )} />
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <FormField control={form.control} name="city" render={({ field }) => (
+                                        <FormItem><FormLabel>City</FormLabel><FormControl><Input placeholder="New Delhi" {...field} /></FormControl><FormMessage /></FormItem>
+                                    )} />
+                                    <FormField control={form.control} name="state" render={({ field }) => (
+                                        <FormItem><FormLabel>State</FormLabel><FormControl><Input placeholder="Delhi" {...field} /></FormControl><FormMessage /></FormItem>
+                                    )} />
+                                    <FormField control={form.control} name="pincode" render={({ field }) => (
+                                        <FormItem><FormLabel>Pincode</FormLabel><FormControl><Input placeholder="110001" {...field} /></FormControl><FormMessage /></FormItem>
+                                    )} />
+                                </div>
+                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <FormField control={form.control} name="mobile" render={({ field }) => (
+                                        <FormItem><FormLabel>Mobile Number</FormLabel><FormControl><Input placeholder="9876543210" {...field} /></FormControl><FormMessage /></FormItem>
+                                    )} />
+                                    <FormField control={form.control} name="email" render={({ field }) => (
+                                        <FormItem><FormLabel>Email (Optional)</FormLabel><FormControl><Input placeholder="john.doe@example.com" {...field} /></FormControl><FormMessage /></FormItem>
+                                    )} />
+                                </div>
                             </div>
                         </div>
+                    </TabsContent>
 
-                        <Separator />
-
-                        <div className="space-y-4">
-                            <h3 className="text-lg font-medium text-primary">Guarantor Information</h3>
-                            <FormField control={form.control} name="guarantor.name" render={({ field }) => (
-                                <FormItem><FormLabel>Guarantor Name</FormLabel><FormControl><Input placeholder="Jane Smith" {...field} /></FormControl><FormMessage /></FormItem>
-                            )} />
-                             <div className="grid md:grid-cols-2 gap-4">
-                                <FormField control={form.control} name="guarantor.mobile" render={({ field }) => (
-                                <FormItem><FormLabel>Guarantor Mobile</FormLabel><FormControl><Input placeholder="9876543211" {...field} /></FormControl><FormMessage /></FormItem>
-                                )} />
-                                <FormField control={form.control} name="guarantor.relation" render={({ field }) => (
-                                <FormItem><FormLabel>Relation to Customer</FormLabel><FormControl><Input placeholder="Spouse, Father, etc." {...field} /></FormControl><FormMessage /></FormItem>
-                                )} />
-                            </div>
-                            <FormField control={form.control} name="guarantor.address" render={({ field }) => (
-                                <FormItem><FormLabel>Guarantor Address</FormLabel><FormControl><Textarea placeholder="Guarantor's full address" {...field} /></FormControl><FormMessage /></FormItem>
-                            )} />
+                    <TabsContent value="documents" className="mt-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+                          <div className="space-y-6">
+                              <FormField
+                                  control={form.control}
+                                  name="aadhaar"
+                                  render={({ field: { onChange, value, ...rest } }) => (
+                                      <FormItem>
+                                      <FormLabel>Aadhaar Card</FormLabel>
+                                      <FormControl>
+                                          <Input
+                                          type="file"
+                                          onChange={(e) =>
+                                              onChange(e.target.files ? e.target.files[0] : undefined)
+                                          }
+                                          {...rest}
+                                          />
+                                      </FormControl>
+                                      <FormDescription>
+                                          Upload front and back as a single PDF.
+                                      </FormDescription>
+                                      <FormMessage />
+                                      </FormItem>
+                                  )}
+                              />
+                              <FormField
+                                  control={form.control}
+                                  name="pan"
+                                  render={({ field: { onChange, value, ...rest } }) => (
+                                      <FormItem>
+                                      <FormLabel>PAN Card</FormLabel>
+                                      <FormControl>
+                                          <Input
+                                          type="file"
+                                          onChange={(e) =>
+                                              onChange(e.target.files ? e.target.files[0] : undefined)
+                                          }
+                                          {...rest}
+                                          />
+                                      </FormControl>
+                                      <FormMessage />
+                                      </FormItem>
+                                  )}
+                              />
+                          </div>
+                          <div className="space-y-4">
+                            <FormField
+                              control={form.control}
+                              name="photo"
+                              render={({ field }) => (
+                                  <FormItem>
+                                      <FormLabel>Upload Customer Photo</FormLabel>
+                                      <FormControl>
+                                          <Input 
+                                              type="file" 
+                                              accept="image/png, image/jpeg, image/jpg"
+                                              {...fileRef}
+                                              onChange={(event) => {
+                                                  field.onChange(event.target.files);
+                                                  const file = event.target.files?.[0];
+                                                  if (file) {
+                                                      const reader = new FileReader();
+                                                      reader.onloadend = () => {
+                                                          setPhotoPreview(reader.result as string);
+                                                      };
+                                                      reader.readAsDataURL(file);
+                                                  } else {
+                                                      setPhotoPreview(null);
+                                                  }
+                                              }}
+                                          />
+                                      </FormControl>
+                                      <FormDescription>Must be a clear, passport-sized photo. Max 2MB.</FormDescription>
+                                      <FormMessage />
+                                  </FormItem>
+                              )}
+                            />
+                            {photoPreview && (
+                              <div className="flex justify-center items-center p-4 border rounded-md bg-muted/50">
+                                  <Image
+                                      src={photoPreview}
+                                      alt="Customer Photo Preview"
+                                      width={150}
+                                      height={150}
+                                      className="rounded-lg object-cover aspect-square"
+                                  />
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        
-                        <Button type="submit" className="w-full" disabled={isSubmitting}>
-                            {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Please wait...</> : "Save Customer"}
+                    </TabsContent>
+                    </Tabs>
+                    <div className="mt-8 flex justify-end">
+                        <Button type="submit" className="bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isSubmitting}>
+                            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Register Customer
                         </Button>
-                    </form>
-                </Form>
-            </CardContent>
+                    </div>
+                </form>
+            </Form>
+          </CardContent>
         </Card>
     </div>
   );
