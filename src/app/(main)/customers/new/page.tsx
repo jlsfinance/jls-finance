@@ -1,18 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
-import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { addDoc, collection } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { Button } from "@/components/ui/button";
+import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
-// ✅ Zod schema with Guarantor fields
+// 🛡️ Zod Validation Schema
 const customerSchema = z.object({
   name: z.string().min(1, "Name is required"),
   phone: z.string().min(10, "Phone number must be at least 10 digits"),
@@ -22,7 +22,8 @@ const customerSchema = z.object({
   voterId: z.string().optional(),
   photo: z
     .any()
-    .refine((file) => file && file.length > 0 && file[0]?.size > 0, "Photo is required"),
+    .refine((file) => file?.length > 0 && file[0]?.size > 0, "Photo is required"),
+
   guarantorName: z.string().optional(),
   guarantorMobile: z.string().optional(),
   guarantorAddress: z.string().optional(),
@@ -31,7 +32,7 @@ const customerSchema = z.object({
 
 type CustomerFormValues = z.infer<typeof customerSchema>;
 
-export default function CustomerRegistrationForm() {
+export default function NewCustomerPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -41,28 +42,30 @@ export default function CustomerRegistrationForm() {
   });
 
   // ✅ Upload to Cloudinary
-  const uploadPhotoToCloudinary = async (photo: File): Promise<string> => {
+  const uploadToCloudinary = async (file: File): Promise<string> => {
     const formData = new FormData();
-    formData.append("file", photo);
-    formData.append("upload_preset", "unsigned_preset"); // ⛔ Replace with your actual preset name
+    formData.append("file", file);
+    formData.append("upload_preset", "unsigned_preset"); // 🟡 replace with your actual unsigned preset
 
-    const res = await fetch("https://api.cloudinary.com/v1_1/dxrf4saja/image/upload", {
+    const response = await fetch("https://api.cloudinary.com/v1_1/dxrf4saja/image/upload", {
       method: "POST",
       body: formData,
     });
 
-    const data = await res.json();
-    if (!res.ok || !data.secure_url) {
-      throw new Error("Photo upload failed");
+    const data = await response.json();
+    if (!response.ok || !data.secure_url) {
+      throw new Error("Upload failed");
     }
 
     return data.secure_url;
   };
 
+  // ✅ Submit Handler
   const onSubmit = async (data: CustomerFormValues) => {
     setIsSubmitting(true);
     try {
-      const photoURL = await uploadPhotoToCloudinary(data.photo[0]);
+      const file = data.photo[0];
+      const photoURL = await uploadToCloudinary(file);
 
       await addDoc(collection(db, "customers"), {
         name: data.name,
@@ -74,27 +77,20 @@ export default function CustomerRegistrationForm() {
         photo_url: photoURL,
         createdAt: new Date().toISOString(),
         guarantor: {
-          name: data.guarantorName || "",
-          mobile: data.guarantorMobile || "",
-          address: data.guarantorAddress || "",
-          relation: data.guarantorRelation || "",
+          name: data.guarantorName || null,
+          mobile: data.guarantorMobile || null,
+          address: data.guarantorAddress || null,
+          relation: data.guarantorRelation || null,
         },
       });
 
-      toast({
-        title: "Customer Registered",
-        description: "Customer and guarantor details saved successfully.",
-      });
-
+      toast({ title: "Success", description: "Customer registered successfully" });
       router.push("/customers");
     } catch (error: any) {
       toast({
         variant: "destructive",
-        title: "Error",
-        description:
-          error.message === "Photo upload failed"
-            ? "Photo upload failed. Please try again."
-            : "Network error occurred. Please try again.",
+        title: "Upload Failed",
+        description: error.message || "Please try again.",
       });
     } finally {
       setIsSubmitting(false);
@@ -102,73 +98,32 @@ export default function CustomerRegistrationForm() {
   };
 
   return (
-    <div className="max-w-lg mx-auto">
-      <h1 className="text-2xl font-bold mb-6">Register New Customer</h1>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+    <div className="max-w-xl mx-auto py-6">
+      <h1 className="text-2xl font-bold mb-4">Register New Customer</h1>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
         {/* Customer Fields */}
-        <div>
-          <label className="block text-sm font-medium">Full Name</label>
-          <Input type="text" {...form.register("name")} placeholder="Enter full name" />
-          <p className="text-red-500 text-sm">{form.formState.errors.name?.message}</p>
-        </div>
+        <Input label="Name" {...form.register("name")} placeholder="Full Name" />
+        <p className="text-sm text-red-500">{form.formState.errors.name?.message}</p>
 
-        <div>
-          <label className="block text-sm font-medium">Phone Number</label>
-          <Input type="text" {...form.register("phone")} placeholder="Enter phone number" />
-          <p className="text-red-500 text-sm">{form.formState.errors.phone?.message}</p>
-        </div>
+        <Input label="Phone" {...form.register("phone")} placeholder="Phone Number" />
+        <p className="text-sm text-red-500">{form.formState.errors.phone?.message}</p>
 
-        <div>
-          <label className="block text-sm font-medium">Address</label>
-          <Textarea {...form.register("address")} placeholder="Enter address" />
-          <p className="text-red-500 text-sm">{form.formState.errors.address?.message}</p>
-        </div>
+        <Textarea {...form.register("address")} placeholder="Address" />
+        <p className="text-sm text-red-500">{form.formState.errors.address?.message}</p>
 
-        <div>
-          <label className="block text-sm font-medium">Aadhaar (Optional)</label>
-          <Input type="text" {...form.register("aadhaar")} />
-        </div>
+        <Input {...form.register("aadhaar")} placeholder="Aadhaar (optional)" />
+        <Input {...form.register("pan")} placeholder="PAN (optional)" />
+        <Input {...form.register("voterId")} placeholder="Voter ID (optional)" />
 
-        <div>
-          <label className="block text-sm font-medium">PAN (Optional)</label>
-          <Input type="text" {...form.register("pan")} />
-        </div>
+        <Input type="file" accept="image/*" {...form.register("photo")} />
+        <p className="text-sm text-red-500">{form.formState.errors.photo?.message}</p>
 
-        <div>
-          <label className="block text-sm font-medium">Voter ID (Optional)</label>
-          <Input type="text" {...form.register("voterId")} />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium">Upload Photo</label>
-          <Input type="file" accept="image/*" {...form.register("photo")} />
-          <p className="text-red-500 text-sm">{form.formState.errors.photo?.message}</p>
-        </div>
-
-        {/* Guarantor Fields */}
-        <div className="border-t pt-4 mt-6">
-          <h2 className="text-lg font-semibold mb-2">Guarantor Details</h2>
-
-          <div>
-            <label className="block text-sm font-medium">Guarantor Name</label>
-            <Input type="text" {...form.register("guarantorName")} placeholder="Enter guarantor's name" />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium">Guarantor Mobile</label>
-            <Input type="text" {...form.register("guarantorMobile")} placeholder="Enter guarantor's mobile number" />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium">Guarantor Address</label>
-            <Textarea {...form.register("guarantorAddress")} placeholder="Enter guarantor's address" />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium">Relation with Customer</label>
-            <Input type="text" {...form.register("guarantorRelation")} placeholder="e.g. Brother, Friend" />
-          </div>
-        </div>
+        {/* Guarantor Section */}
+        <h2 className="font-semibold pt-4">Guarantor Details (Optional)</h2>
+        <Input {...form.register("guarantorName")} placeholder="Guarantor Name" />
+        <Input {...form.register("guarantorMobile")} placeholder="Mobile Number" />
+        <Textarea {...form.register("guarantorAddress")} placeholder="Address" />
+        <Input {...form.register("guarantorRelation")} placeholder="Relation with Customer" />
 
         <Button type="submit" className="w-full" disabled={isSubmitting}>
           {isSubmitting ? "Submitting..." : "Register Customer"}
