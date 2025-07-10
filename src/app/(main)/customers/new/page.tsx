@@ -42,7 +42,7 @@ export default function CustomerRegistrationForm() {
   // ✅ Photo Upload Function using FreeImage.host
   const uploadPhotoToFreeImage = async (photo: File): Promise<string> => {
     const formData = new FormData();
-    formData.append("key", "YOUR_API_KEY"); // ← Replace with your FreeImage.host API key
+    formData.append("key", "6d207e02198a847aa98d0a2a901485a5"); // ← Replace with your FreeImage.host API key
     formData.append("action", "upload");
     formData.append("source", photo);
     formData.append("format", "json");
