@@ -1,36 +1,25 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useToast } from "@/hooks/use-toast";
+import DOMPurify from "dompurify";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, UserCheck, ChevronsUpDown, Check } from "lucide-react";
+import { Loader2, UserCheck } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { addDoc, collection, getDocs } from "firebase/firestore";
 import { useAuth } from "@/context/AuthContext";
-import { cn } from "@/lib/utils";
 import Image from "next/image";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { useToast } from "@/hooks/use-toast";
+
+// --- Loan schema and default values ---
 
 const loanSchema = z.object({
   customerId: z.string().min(1, "Select a customer."),
@@ -40,8 +29,16 @@ const loanSchema = z.object({
   processingFeePercentage: z.coerce.number().min(0).max(10),
   notes: z.string().optional(),
 });
-
 type LoanFormValues = z.infer<typeof loanSchema>;
+
+const DEFAULT_LOAN_VALUES: LoanFormValues = {
+  customerId: "",
+  amount: 100000,
+  interestRate: 12,
+  tenure: 12,
+  processingFeePercentage: 2,
+  notes: "",
+};
 
 interface Customer {
   id: string;
@@ -60,58 +57,100 @@ interface Customer {
   };
 }
 
+// --- Info component for displaying customer fields ---
+const Info: React.FC<{ label: string; value?: string }> = ({ label, value }) =>
+  value ? <p className="text-sm"><strong>{label}:</strong> {value}</p> : null;
+
 export default function NewLoanPage() {
   const router = useRouter();
   const { toast } = useToast();
   const { user } = useAuth();
 
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customerLoans, setCustomerLoans] = useState<Record<string, boolean>>({});
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [comboboxOpen, setComboboxOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formDirty, setFormDirty] = useState(false);
 
+  // --- Setup form ---
   const form = useForm<LoanFormValues>({
     resolver: zodResolver(loanSchema),
-    defaultValues: {
-      customerId: "",
-      amount: 100000,
-      interestRate: 12,
-      tenure: 12,
-      processingFeePercentage: 2,
-      notes: "",
-    },
+    defaultValues: DEFAULT_LOAN_VALUES,
+    mode: "onBlur",
   });
 
+  // --- Fetch customers and their loan status ---
   useEffect(() => {
-    const fetchCustomers = async () => {
+    const fetchData = async () => {
+      setIsLoading(true);
       try {
-        const snap = await getDocs(collection(db, "customers"));
-        const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
-        setCustomers(data);
-      } catch {
-        toast({ variant: "destructive", title: "Failed to load customers." });
+        // Fetch customers
+        const custSnap = await getDocs(collection(db, "customers"));
+        const allCustomers: Customer[] = custSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
+        setCustomers(allCustomers);
+
+        // Fetch loans (only customerId is needed)
+        const loansSnap = await getDocs(collection(db, "loans"));
+        const loanedCustomerIds = new Set<string>();
+        loansSnap.forEach(doc => {
+          const data = doc.data();
+          if (data.customerId) loanedCustomerIds.add(data.customerId);
+        });
+
+        // Map: customerId => hasLoan
+        const loanMap: Record<string, boolean> = {};
+        allCustomers.forEach(c => {
+          loanMap[c.id] = loanedCustomerIds.has(c.id);
+        });
+        setCustomerLoans(loanMap);
+      } catch (err) {
+        toast({ variant: "destructive", title: "Failed to load customers or loans." });
+      } finally {
+        setIsLoading(false);
       }
     };
-    fetchCustomers();
+    fetchData();
   }, [toast]);
 
+  // --- Dirty form detection (prompt before leaving if dirty) ---
   useEffect(() => {
-    const selected = customers.find(c => c.id === form.watch("customerId"));
-    setSelectedCustomer(selected || null);
-  }, [form.watch("customerId"), customers]);
+    const unsubscribe = form.watch(() => setFormDirty(true));
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (formDirty) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [form, formDirty]);
 
+  // --- Memoized selectedCustomer (optional but not strictly needed) ---
+  // const selectedCustomer = useMemo(() => customers.find(c => c.id === form.watch("customerId")) || null, [form.watch("customerId"), customers]);
+
+  // --- Calculate processing fee dynamically ---
+  const amount = form.watch("amount");
+  const processingFeePercentage = form.watch("processingFeePercentage");
+  const processingFee = useMemo(
+    () => Math.round((amount * processingFeePercentage) / 100) || 0,
+    [amount, processingFeePercentage]
+  );
+
+  // --- Submit handler ---
   const onSubmit = async (data: LoanFormValues) => {
     if (!user || !selectedCustomer) return;
-
     setIsSubmitting(true);
     try {
-      const processingFee = Math.round((data.amount * data.processingFeePercentage) / 100);
+      const sanitizedNotes = data.notes ? DOMPurify.sanitize(data.notes) : null;
       const monthlyRate = data.interestRate / 12 / 100;
       const emi = Math.round(
         (data.amount * monthlyRate * Math.pow(1 + monthlyRate, data.tenure)) /
-          (Math.pow(1 + monthlyRate, data.tenure) - 1)
+        (Math.pow(1 + monthlyRate, data.tenure) - 1)
       );
-
       await addDoc(collection(db, "loans"), {
         customerId: selectedCustomer.id,
         customerName: selectedCustomer.name,
@@ -121,16 +160,13 @@ export default function NewLoanPage() {
         processingFeePercentage: data.processingFeePercentage,
         processingFee,
         emi,
-        notes: data.notes || null,
+        notes: sanitizedNotes,
         status: "Pending",
         createdBy: user.uid,
         date: new Date().toISOString().split("T")[0],
       });
-
-      toast({
-        title: "Loan Submitted",
-        description: "Application is awaiting approval.",
-      });
+      toast({ title: "Loan Submitted", description: "Application is awaiting approval." });
+      setFormDirty(false);
       router.push("/admin/approvals");
     } catch (e: any) {
       toast({
@@ -143,73 +179,76 @@ export default function NewLoanPage() {
     }
   };
 
-  const Info = ({ label, value }: { label: string; value?: string }) =>
-    value ? <p className="text-sm"><strong>{label}:</strong> {value}</p> : null;
-
+  // --- UI: Customer selection grid ---
   return (
     <div className="max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">Loan Application Form</h1>
-      <Card>
-        <CardHeader>
-          <CardTitle>New Loan</CardTitle>
-          <CardDescription>Select a customer and fill in the loan details.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      {!selectedCustomer && (
+        <div>
+          <h2 className="text-xl font-semibold mb-4">Select a Customer</h2>
+          {isLoading ? (
+            <div className="flex justify-center items-center h-32">
+              <Loader2 className="animate-spin h-8 w-8" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-h-96 overflow-y-auto pr-2">
+              {customers.map(customer => {
+                const hasLoan = customerLoans[customer.id];
+                return (
+                  <Card
+                    key={customer.id}
+                    className={`
+                      flex flex-col items-center p-4 gap-2 transition
+                      ${hasLoan ? "opacity-50 bg-gray-100 pointer-events-none" : "hover:shadow-lg"}
+                    `}
+                  >
+                    <Image
+                      src={customer.photo_url || "https://placehold.co/80x80"}
+                      alt={customer.name}
+                      width={80}
+                      height={80}
+                      className="rounded-full object-cover"
+                      loading="lazy"
+                    />
+                    <div className="text-center font-medium">{customer.name}</div>
+                    {hasLoan ? (
+                      <div className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded font-semibold mb-2">
+                        Already Loan Taken
+                      </div>
+                    ) : (
+                      <div className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded font-semibold mb-2">
+                        Apply for him now:
+                      </div>
+                    )}
+                    {!hasLoan && (
+                      <Button
+                        className="w-full"
+                        onClick={() => {
+                          form.setValue("customerId", customer.id);
+                          setSelectedCustomer(customer);
+                        }}
+                      >
+                        Apply
+                      </Button>
+                    )}
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
-              {/* Customer Selection */}
-              <FormField
-                control={form.control}
-                name="customerId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Select Customer</FormLabel>
-                    <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant="outline"
-                            role="combobox"
-                            className="w-full justify-between"
-                          >
-                            {field.value
-                              ? customers.find(c => c.id === field.value)?.name
-                              : "Select a customer"}
-                            <ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                        <Command>
-                          <CommandInput placeholder="Search customer..." />
-                          <CommandList>
-                            <CommandEmpty>No customer found.</CommandEmpty>
-                            <CommandGroup>
-                              {customers.map(c => (
-                                <CommandItem
-                                  key={c.id}
-                                  value={c.id}
-                                  onSelect={(value) => {
-                                    field.onChange(value);
-                                    setComboboxOpen(false);
-                                  }}
-                                >
-                                  <Check className={cn("mr-2 h-4 w-4", c.id === field.value ? "opacity-100" : "opacity-0")} />
-                                  {c.name}
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {selectedCustomer && (
+      {/* --- Loan form shows after customer is selected --- */}
+      {selectedCustomer && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>New Loan for {selectedCustomer.name}</CardTitle>
+            <CardDescription>Fill in the loan details.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                 <Card className="bg-muted/50 p-4">
                   <div className="flex items-start gap-4">
                     <Image
@@ -218,6 +257,7 @@ export default function NewLoanPage() {
                       width={100}
                       height={100}
                       className="rounded-md border object-cover aspect-square"
+                      loading="lazy"
                     />
                     <div className="space-y-1">
                       <h3 className="text-xl font-semibold flex items-center gap-2">
@@ -234,40 +274,105 @@ export default function NewLoanPage() {
                     <Info label="Voter ID" value={selectedCustomer.voterId} />
                   </div>
                 </Card>
-              )}
 
-              {/* Loan Fields */}
-              {selectedCustomer && (
-                <>
-                  <Separator />
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <FormField control={form.control} name="amount" render={({ field }) => (
-                      <FormItem><FormLabel>Loan Amount (₹)</FormLabel><FormControl><Input {...field} type="number" /></FormControl><FormMessage /></FormItem>
-                    )} />
-                    <FormField control={form.control} name="tenure" render={({ field }) => (
-                      <FormItem><FormLabel>Tenure (Months)</FormLabel><FormControl><Input {...field} type="number" /></FormControl><FormMessage /></FormItem>
-                    )} />
-                    <FormField control={form.control} name="interestRate" render={({ field }) => (
-                      <FormItem><FormLabel>Interest Rate (%)</FormLabel><FormControl><Input {...field} type="number" step="0.1" /></FormControl><FormMessage /></FormItem>
-                    )} />
-                    <FormField control={form.control} name="processingFeePercentage" render={({ field }) => (
-                      <FormItem><FormLabel>Processing Fee (%)</FormLabel><FormControl><Input {...field} type="number" step="0.1" /></FormControl><FormMessage /></FormItem>
-                    )} />
-                  </div>
-                  <FormField control={form.control} name="notes" render={({ field }) => (
-                    <FormItem><FormLabel>Notes</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>
-                  )} />
-                  <Button type="submit" className="w-full bg-accent hover:bg-accent/90" disabled={isSubmitting}>
+                <Separator />
+                <div className="grid md:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="amount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Loan Amount (₹)</FormLabel>
+                        <FormControl>
+                          <Input {...field} type="number" onBlur={field.onBlur} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="tenure"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tenure (Months)</FormLabel>
+                        <FormControl>
+                          <Input {...field} type="number" onBlur={field.onBlur} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="interestRate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Interest Rate (%)</FormLabel>
+                        <FormControl>
+                          <Input {...field} type="number" step="0.1" onBlur={field.onBlur} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="processingFeePercentage"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Processing Fee (%)</FormLabel>
+                        <FormControl>
+                          <Input {...field} type="number" step="0.1" onBlur={field.onBlur} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                {/* Show calculated processing fee */}
+                <div className="text-right text-sm text-muted-foreground">
+                  Processing Fee: <span className="font-semibold">₹{processingFee}</span>
+                </div>
+                <FormField
+                  control={form.control}
+                  name="notes"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Notes</FormLabel>
+                      <FormControl>
+                        <Textarea {...field} onBlur={field.onBlur} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="flex gap-2">
+                  <Button
+                    type="submit"
+                    className="w-full bg-accent hover:bg-accent/90"
+                    disabled={isSubmitting}
+                  >
                     {isSubmitting ? (
                       <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting...</>
                     ) : "Submit Application for Approval"}
                   </Button>
-                </>
-              )}
-            </form>
-          </Form>
-        </CardContent>
-      </Card>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedCustomer(null);
+                      form.reset(DEFAULT_LOAN_VALUES);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
