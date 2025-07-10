@@ -1,260 +1,31 @@
-"use client";
-
-import React, { useState } from "react"
-import { useRouter } from "next/navigation"
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
-import { useToast } from "@/hooks/use-toast"
-import Image from "next/image"
-import { Button } from "@/components/ui/button"
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Loader2 } from "lucide-react"
-import { db } from "@/lib/firebase"
-import { addDoc, collection } from "firebase/firestore"
-import { useAuth } from "@/context/AuthContext"
-import { Textarea } from "@/components/ui/textarea"
-import { Separator } from "@/components/ui/separator"
-import axios from "axios";
-
-const customerFormSchema = z.object({
-  fullName: z.string().min(2, { message: "Full name is required." }),
-  mobile: z.string().length(10, { message: "A valid 10-digit mobile number is required." }),
-  address: z.string().min(10, { message: "Full address is required." }),
-  aadhaar: z.string().length(12, "Aadhaar must be 12 digits.").optional().or(z.literal('')),
-  pan: z.string().length(10, "PAN must be 10 characters.").optional().or(z.literal('')),
-  voterId: z.string().min(5, "Voter ID seems too short.").optional().or(z.literal('')),
-  guarantor: z.object({
-    name: z.string().optional(),
-    relation: z.string().optional(),
-    mobile: z.string().length(10, "Must be a 10-digit mobile number.").optional().or(z.literal('')),
-    address: z.string().optional(),
-  }).optional(),
-  photo: z.instanceof(FileList).refine(files => files?.length >= 1, "Photo is required."),
-});
-
-type CustomerFormValues = z.infer<typeof customerFormSchema>;
-
-const IMGBB_API_KEY = "c9f4edabbd1fe1bc3a063e26bc6a2ecd";
-
-export default function NewCustomerPage() {
-    const router = useRouter();
-    const { toast } = useToast();
-    const { user } = useAuth();
-    const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-
-    const form = useForm<CustomerFormValues>({
-        resolver: zodResolver(customerFormSchema),
-        defaultValues: {
-            fullName: "",
-            mobile: "",
-            address: "",
-            aadhaar: "",
-            pan: "",
-            voterId: "",
-            guarantor: {
-                name: "",
-                relation: "",
-                mobile: "",
-                address: "",
+<FormField
+  control={form.control}
+  name="photo"
+  render={({ field }) => (
+    <FormItem>
+      <FormLabel>Upload Photo *</FormLabel>
+      <FormControl>
+        <Input
+          type="file"
+          accept="image/*"
+          onChange={(event) => {
+            const files = event.target.files;
+            form.setValue("photo", files, { shouldValidate: true });
+            const file = files?.[0];
+            if (file) {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                setPhotoPreview(reader.result as string);
+              };
+              reader.readAsDataURL(file);
+            } else {
+              setPhotoPreview(null);
             }
-        },
-    });
-
-  async function onSubmit(values: CustomerFormValues) {
-    if (!user) {
-        toast({ variant: "destructive", title: "Not Authenticated", description: "You must be logged in to create a customer." });
-        return;
-    }
-    if (!db) {
-        toast({ variant: "destructive", title: "Configuration Error", description: "Firebase is not configured correctly." });
-        return;
-    }
-    setIsSubmitting(true);
-    try {
-      let photoUrl = '';
-      const photoFile = values.photo?.[0];
-
-      if (photoFile) {
-        const formData = new FormData();
-        formData.append("image", photoFile);
-        
-        const response = await axios.post(
-            `https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`,
-            formData
-        );
-
-        if (response.data.success) {
-            photoUrl = response.data.data.url;
-        } else {
-            throw new Error("Image upload to imgbb failed.");
-        }
-      }
-
-      await addDoc(collection(db, 'customers'), {
-          name: values.fullName,
-          phone: values.mobile,
-          address: values.address,
-          aadhaar: values.aadhaar || null,
-          pan: values.pan || null,
-          voterId: values.voterId || null,
-          guarantor: values.guarantor && (values.guarantor.name || values.guarantor.mobile) ? {
-              name: values.guarantor.name || null,
-              relation: values.guarantor.relation || null,
-              mobile: values.guarantor.mobile || null,
-              address: values.guarantor.address || null,
-          } : null,
-          photo_url: photoUrl,
-          status: 'Active',
-          createdBy: user.uid,
-          createdAt: new Date().toISOString(),
-      });
-
-      toast({
-        title: "✅ Customer Registered",
-        description: `${values.fullName} has been successfully added.`,
-      });
-      router.push("/customers");
-
-    } catch(error: any) {
-        console.error("Failed to register customer:", error);
-        const errorMessage = error.response?.data?.error?.message || error.message || "Could not save the new customer. Please try again.";
-        toast({
-            variant: "destructive",
-            title: "Registration Failed",
-            description: errorMessage,
-        });
-    } finally {
-        setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-       <h1 className="text-2xl font-headline font-semibold">New Customer Registration</h1>
-        <Card className="max-w-4xl mx-auto shadow-lg">
-             <CardHeader>
-                <CardTitle>Customer Registration Form</CardTitle>
-                <CardDescription>Fill out the form below to add a new customer to the system.</CardDescription>
-            </CardHeader>
-            <CardContent>
-             <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-                    
-                    <div className="space-y-4">
-                        <h3 className="text-lg font-medium text-primary">Personal & Contact Details</h3>
-                        <FormField control={form.control} name="fullName" render={({ field }) => (
-                            <FormItem><FormLabel>Full Name *</FormLabel><FormControl><Input placeholder="John Doe" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-                        )} />
-                        <FormField control={form.control} name="mobile" render={({ field }) => (
-                            <FormItem><FormLabel>Mobile Number *</FormLabel><FormControl><Input placeholder="9876543210" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-                        )} />
-                        <FormField control={form.control} name="address" render={({ field }) => (
-                            <FormItem><FormLabel>Full Address *</FormLabel><FormControl><Textarea placeholder="123, Main Street, New Delhi" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-                        )} />
-                    </div>
-                    
-                    <Separator />
-
-                    <div className="space-y-4">
-                        <h3 className="text-lg font-medium text-primary">KYC Information</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <FormField control={form.control} name="aadhaar" render={({ field }) => (
-                                <FormItem><FormLabel>Aadhaar Number</FormLabel><FormControl><Input placeholder="12-digit number" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-                            )} />
-                            <FormField control={form.control} name="pan" render={({ field }) => (
-                                <FormItem><FormLabel>PAN Number</FormLabel><FormControl><Input placeholder="10-character alphanumeric" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-                            )} />
-                            <FormField control={form.control} name="voterId" render={({ field }) => (
-                                <FormItem><FormLabel>Voter ID</FormLabel><FormControl><Input placeholder="Voter card number" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-                            )} />
-                        </div>
-                    </div>
-                    
-                    <Separator />
-                    
-                    <div className="space-y-4">
-                        <h3 className="text-lg font-medium text-primary">Guarantor Details</h3>
-                        <FormField control={form.control} name="guarantor.name" render={({ field }) => (
-                            <FormItem><FormLabel>Guarantor Name</FormLabel><FormControl><Input placeholder="Jane Smith" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-                        )} />
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                             <FormField control={form.control} name="guarantor.relation" render={({ field }) => (
-                                <FormItem><FormLabel>Relation to Customer</FormLabel><FormControl><Input placeholder="Spouse, Father, etc." {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-                            )} />
-                            <FormField control={form.control} name="guarantor.mobile" render={({ field }) => (
-                                <FormItem><FormLabel>Guarantor Mobile</FormLabel><FormControl><Input placeholder="9876543211" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-                            )} />
-                        </div>
-                        <FormField control={form.control} name="guarantor.address" render={({ field }) => (
-                            <FormItem><FormLabel>Guarantor Address</FormLabel><FormControl><Textarea placeholder="Guarantor's full address" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-                        )} />
-                    </div>
-
-                    <Separator />
-
-                    <div className="space-y-4">
-                        <h3 className="text-lg font-medium text-primary">Customer Photo</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
-                             <FormField
-                              control={form.control}
-                              name="photo"
-                              render={({ field: { onChange, ...rest } }) => (
-                                  <FormItem>
-                                      <FormLabel>Upload Photo *</FormLabel>
-                                      <FormControl>
-                                          <Input
-                                              type="file"
-                                              accept="image/png, image/jpeg, image/jpg"
-                                              onChange={(event) => {
-                                                  const files = event.target.files;
-                                                  onChange(files);
-                                                  const file = files?.[0];
-                                                  if (file) {
-                                                      const reader = new FileReader();
-                                                      reader.onloadend = () => {
-                                                          setPhotoPreview(reader.result as string);
-                                                      };
-                                                      reader.readAsDataURL(file);
-                                                  } else {
-                                                      setPhotoPreview(null);
-                                                  }
-                                              }}
-                                          />
-                                      </FormControl>
-                                      <FormDescription>Must be a clear, passport-sized photo. Max 16MB.</FormDescription>
-                                      <FormMessage />
-                                  </FormItem>
-                              )}
-                            />
-                            {photoPreview && (
-                              <div className="flex justify-center items-center p-4 border rounded-md bg-muted/50">
-                                  <Image
-                                      src={photoPreview}
-                                      alt="Customer Photo Preview"
-                                      width={150}
-                                      height={150}
-                                      className="rounded-lg object-cover aspect-square"
-                                  />
-                              </div>
-                            )}
-                        </div>
-                    </div>
-
-
-                    <div className="mt-8 flex justify-end">
-                        <Button type="submit" className="bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isSubmitting}>
-                            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Save Customer
-                        </Button>
-                    </div>
-                </form>
-            </Form>
-            </CardContent>
-        </Card>
-    </div>
-  );
-}
+          }}
+        />
+      </FormControl>
+      <FormDescription>Must be a clear, passport-sized photo. Max 16MB.</FormDescription>
+      <FormMessage />
+    </FormItem>
+  )}
+/>
