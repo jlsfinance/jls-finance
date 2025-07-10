@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useForm, Controller } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
@@ -18,16 +18,17 @@ import { db } from "@/lib/firebase";
 import { addDoc, collection, getDocs } from "firebase/firestore";
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
+import Image from "next/image";
 
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
 const loanApplicationSchema = z.object({
   customerId: z.string().min(1, "Please select a customer."),
-  amount: z.coerce.number().positive("Loan amount must be positive"),
-  interestRate: z.coerce.number().min(0, "Interest rate cannot be negative"),
-  tenure: z.coerce.number().int().positive("Tenure must be a positive number of months"),
-  processingFeePercentage: z.coerce.number().min(0).max(100),
+  amount: z.coerce.number().positive("Loan amount must be positive").min(1000, "Amount must be at least ₹1,000"),
+  interestRate: z.coerce.number().min(0, "Interest rate cannot be negative").max(50, "Interest rate seems too high"),
+  tenure: z.coerce.number().int().positive("Tenure must be a positive number of months").min(1, "Tenure must be at least 1 month"),
+  processingFeePercentage: z.coerce.number().min(0, "Processing fee cannot be negative").max(10, "Processing fee seems too high"),
   notes: z.string().optional(),
 });
 
@@ -41,6 +42,7 @@ interface Customer {
   aadhaar?: string;
   pan?: string;
   voterId?: string;
+  photo_url?: string;
   guarantor?: {
     name?: string;
     mobile?: string;
@@ -103,7 +105,7 @@ export default function NewLoanPage() {
         processingFeePercentage: data.processingFeePercentage,
         processingFee: Math.round(processingFee),
         emi: Math.round(emi),
-        status: "Pending",
+        status: "Pending", // Set to Pending for the approval queue
         notes: data.notes || null,
         createdBy: user.uid,
         date: new Date().toISOString().split('T')[0], // Application date
@@ -111,7 +113,7 @@ export default function NewLoanPage() {
 
       toast({
         title: "✅ Application Submitted",
-        description: `Loan application for ${selectedCustomer.name} created.`,
+        description: `Loan application for ${selectedCustomer.name} submitted and awaiting approval.`,
       });
       router.push("/admin/approvals");
 
@@ -126,6 +128,8 @@ export default function NewLoanPage() {
   const InfoField = ({ label, value }: { label: string; value?: string | null }) => (
     value ? <div className="text-sm"><span className="font-semibold text-muted-foreground">{label}:</span> {value}</div> : null
   );
+  
+  const placeholderImage = 'https://placehold.co/100x100.png';
 
   return (
     <div className="space-y-6">
@@ -153,6 +157,7 @@ export default function NewLoanPage() {
                             <Button
                               variant="outline"
                               role="combobox"
+                              aria-expanded={comboboxOpen}
                               className={cn(
                                 "w-full justify-between",
                                 !field.value && "text-muted-foreground"
@@ -166,28 +171,30 @@ export default function NewLoanPage() {
                         <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                           <Command>
                             <CommandInput placeholder="Search customer by name..." />
-                            <CommandEmpty>No customer found.</CommandEmpty>
-                            <CommandGroup>
-                              {customers.map((customer) => (
-                                <CommandItem
-                                  value={customer.name}
-                                  key={customer.id}
-                                  onSelect={() => {
-                                    form.setValue("customerId", customer.id);
-                                    setSelectedCustomer(customer);
-                                    setComboboxOpen(false);
-                                  }}
-                                >
-                                  <Check
-                                    className={cn(
-                                      "mr-2 h-4 w-4",
-                                      customer.id === field.value ? "opacity-100" : "opacity-0"
-                                    )}
-                                  />
-                                  {customer.name}
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
+                            <CommandList>
+                                <CommandEmpty>No customer found.</CommandEmpty>
+                                <CommandGroup>
+                                {customers.map((customer) => (
+                                    <CommandItem
+                                    value={customer.name}
+                                    key={customer.id}
+                                    onSelect={() => {
+                                        form.setValue("customerId", customer.id);
+                                        setSelectedCustomer(customer);
+                                        setComboboxOpen(false);
+                                    }}
+                                    >
+                                    <Check
+                                        className={cn(
+                                        "mr-2 h-4 w-4",
+                                        customer.id === field.value ? "opacity-100" : "opacity-0"
+                                        )}
+                                    />
+                                    {customer.name}
+                                    </CommandItem>
+                                ))}
+                                </CommandGroup>
+                            </CommandList>
                           </Command>
                         </PopoverContent>
                       </Popover>
@@ -198,22 +205,35 @@ export default function NewLoanPage() {
 
                 {selectedCustomer && (
                     <Card className="bg-muted/50 p-4">
-                        <CardHeader className="p-2">
-                             <CardTitle className="text-xl flex items-center gap-2"><UserCheck/> {selectedCustomer.name}</CardTitle>
+                        <CardHeader className="p-2 flex flex-row items-start gap-4">
+                             <Image 
+                                src={selectedCustomer.photo_url || placeholderImage}
+                                alt={selectedCustomer.name}
+                                width={100}
+                                height={100}
+                                className="rounded-md object-cover aspect-square border"
+                                data-ai-hint="person"
+                             />
+                             <div className="space-y-1">
+                                <CardTitle className="text-xl flex items-center gap-2"><UserCheck/> {selectedCustomer.name}</CardTitle>
+                                <InfoField label="Mobile" value={selectedCustomer.phone} />
+                                <InfoField label="Address" value={selectedCustomer.address} />
+                             </div>
                         </CardHeader>
                         <CardContent className="p-2 space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2">
-                               <InfoField label="Mobile" value={selectedCustomer.phone} />
-                               <InfoField label="Address" value={selectedCustomer.address} />
-                               <InfoField label="Aadhaar" value={selectedCustomer.aadhaar} />
-                               <InfoField label="PAN" value={selectedCustomer.pan} />
-                               <InfoField label="Voter ID" value={selectedCustomer.voterId} />
+                            <div>
+                                <h4 className="font-semibold text-sm mb-2">KYC Details</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-x-4 gap-y-2">
+                                   <InfoField label="Aadhaar" value={selectedCustomer.aadhaar} />
+                                   <InfoField label="PAN" value={selectedCustomer.pan} />
+                                   <InfoField label="Voter ID" value={selectedCustomer.voterId} />
+                                </div>
                             </div>
                             {selectedCustomer.guarantor?.name && (
                                 <>
                                 <Separator />
                                 <div className="space-y-2">
-                                     <p className="font-semibold">Guarantor Details</p>
+                                     <h4 className="font-semibold text-sm">Guarantor Details</h4>
                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2">
                                          <InfoField label="Name" value={selectedCustomer.guarantor.name} />
                                          <InfoField label="Relation" value={selectedCustomer.guarantor.relation} />
