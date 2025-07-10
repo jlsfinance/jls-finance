@@ -36,7 +36,7 @@ export default function CustomerRegistrationForm() {
     resolver: zodResolver(customerSchema),
   });
 
-  // ✅ Photo Upload Function (imgbb)
+  // ✅ Photo Upload Function (imgbb) — COMMENTED OUT
   // const uploadPhotoToImgBB = async (photo: File) => {
   //   const formData = new FormData();
   //   formData.append("image", photo);
@@ -58,7 +58,9 @@ export default function CustomerRegistrationForm() {
   const onSubmit = async (data: CustomerFormValues) => {
     setIsSubmitting(true);
     try {
-      const photoURL = await uploadPhotoToImgBB(data.photo[0]);
+      // ✅ Skipping photo upload temporarily
+      // const photoURL = await uploadPhotoToImgBB(data.photo[0]);
+      const photoURL = null; // or use a placeholder image URL if needed
 
       await addDoc(collection(db, "customers"), {
         name: data.name,
