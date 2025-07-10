@@ -33,7 +33,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import axios from "axios";
 
-const IMGBB_API_KEY = "c9f4edabbd1fe1bc3a063e26bc6a2ecd";
+// 👇 Optional: move to .env.local
+const IMGBB_API_KEY = process.env.NEXT_PUBLIC_IMGBB_API_KEY || "c9f4edabbd1fe1bc3a063e26bc6a2ecd";
 
 const customerFormSchema = z.object({
   fullName: z.string().min(2, { message: "Full name is required." }),
@@ -42,12 +43,14 @@ const customerFormSchema = z.object({
   aadhaar: z.string().length(12, "Aadhaar must be 12 digits.").optional().or(z.literal("")),
   pan: z.string().length(10, "PAN must be 10 characters.").optional().or(z.literal("")),
   voterId: z.string().min(5, "Voter ID too short.").optional().or(z.literal("")),
-  guarantor: z.object({
-    name: z.string().optional(),
-    relation: z.string().optional(),
-    mobile: z.string().length(10, "Must be 10-digit mobile").optional().or(z.literal("")),
-    address: z.string().optional(),
-  }).optional(),
+  guarantor: z
+    .object({
+      name: z.string().optional(),
+      relation: z.string().optional(),
+      mobile: z.string().length(10, "Must be 10-digit mobile").optional().or(z.literal("")),
+      address: z.string().optional(),
+    })
+    .optional(),
   photo: z.instanceof(FileList).refine((file) => file.length > 0, "Photo is required."),
 });
 
@@ -93,7 +96,6 @@ export default function AddCustomerPage() {
 
     try {
       const photoFile = values.photo?.[0];
-
       if (photoFile.size > 16 * 1024 * 1024) {
         toast({
           variant: "destructive",
@@ -103,19 +105,25 @@ export default function AddCustomerPage() {
         return;
       }
 
-      // ✅ Upload to imgbb
-      const formData = new FormData();
-      formData.append("image", photoFile);
+      // ✅ Upload to imgbb with error handling
+      try {
+        const formData = new FormData();
+        formData.append("image", photoFile);
 
-      const res = await axios.post(
-        `https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`,
-        formData
-      );
+        const res = await axios.post(
+          `https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`,
+          formData
+        );
 
-      if (res.data.success) {
-        photoUrl = res.data.data.url;
-      } else {
-        throw new Error("Image upload failed.");
+        if (res.status === 200 && res.data?.data?.url) {
+          photoUrl = res.data.data.url;
+        } else {
+          console.error("imgbb upload response issue:", res.data);
+          throw new Error("Image upload failed. Please try again.");
+        }
+      } catch (uploadErr: any) {
+        console.error("imgbb upload error:", uploadErr);
+        throw new Error("Failed to upload photo. Check API key or internet.");
       }
 
       // ✅ Save to Firestore
@@ -148,6 +156,7 @@ export default function AddCustomerPage() {
 
       router.push("/customers");
     } catch (error: any) {
+      console.error("Submit error:", error);
       toast({
         variant: "destructive",
         title: "Error",
