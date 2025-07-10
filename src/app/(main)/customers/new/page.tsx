@@ -12,37 +12,32 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDes
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Loader2 } from "lucide-react"
-import { db, storage } from "@/lib/firebase"
+import { db } from "@/lib/firebase"
 import { addDoc, collection } from "firebase/firestore"
-import { ref, uploadBytes } from "firebase/storage"
 import { useAuth } from "@/context/AuthContext"
 import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
+import axios from "axios";
 
 const customerFormSchema = z.object({
-  // Personal Info
   fullName: z.string().min(2, { message: "Full name is required." }),
   mobile: z.string().length(10, { message: "A valid 10-digit mobile number is required." }),
   address: z.string().min(10, { message: "Full address is required." }),
-
-  // KYC Details
   aadhaar: z.string().length(12, "Aadhaar must be 12 digits.").optional().or(z.literal('')),
   pan: z.string().length(10, "PAN must be 10 characters.").optional().or(z.literal('')),
   voterId: z.string().min(5, "Voter ID seems too short.").optional().or(z.literal('')),
-
-  // Guarantor
   guarantor: z.object({
     name: z.string().optional(),
     relation: z.string().optional(),
     mobile: z.string().length(10, "Must be a 10-digit mobile number.").optional().or(z.literal('')),
     address: z.string().optional(),
   }).optional(),
-
-  // Photo
   photo: z.instanceof(FileList).refine(files => files?.length >= 1, "Photo is required."),
 });
 
 type CustomerFormValues = z.infer<typeof customerFormSchema>;
+
+const IMGBB_API_KEY = "c9f4edabbd1fe1bc3a063e26bc6a2ecd";
 
 export default function NewCustomerPage() {
     const router = useRouter();
@@ -74,20 +69,29 @@ export default function NewCustomerPage() {
         toast({ variant: "destructive", title: "Not Authenticated", description: "You must be logged in to create a customer." });
         return;
     }
-    if (!storage || !db) {
+    if (!db) {
         toast({ variant: "destructive", title: "Configuration Error", description: "Firebase is not configured correctly." });
         return;
     }
     setIsSubmitting(true);
     try {
-      let photoPath = '';
+      let photoUrl = '';
       const photoFile = values.photo?.[0];
 
       if (photoFile) {
-        const filePath = `customer-photos/${user.uid}/${Date.now()}_${photoFile.name}`;
-        const storageRef = ref(storage, filePath);
-        await uploadBytes(storageRef, photoFile);
-        photoPath = filePath;
+        const formData = new FormData();
+        formData.append("image", photoFile);
+        
+        const response = await axios.post(
+            `https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`,
+            formData
+        );
+
+        if (response.data.success) {
+            photoUrl = response.data.data.url;
+        } else {
+            throw new Error("Image upload to imgbb failed.");
+        }
       }
 
       await addDoc(collection(db, 'customers'), {
@@ -103,7 +107,7 @@ export default function NewCustomerPage() {
               mobile: values.guarantor.mobile || null,
               address: values.guarantor.address || null,
           } : null,
-          photo: photoPath,
+          photo_url: photoUrl,
           status: 'Active',
           createdBy: user.uid,
           createdAt: new Date().toISOString(),
@@ -117,10 +121,11 @@ export default function NewCustomerPage() {
 
     } catch(error: any) {
         console.error("Failed to register customer:", error);
+        const errorMessage = error.response?.data?.error?.message || error.message || "Could not save the new customer. Please try again.";
         toast({
             variant: "destructive",
             title: "Registration Failed",
-            description: error.message || "Could not save the new customer. Please try again.",
+            description: errorMessage,
         });
     } finally {
         setIsSubmitting(false);
@@ -139,7 +144,6 @@ export default function NewCustomerPage() {
              <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
                     
-                    {/* Personal & Contact Details */}
                     <div className="space-y-4">
                         <h3 className="text-lg font-medium text-primary">Personal & Contact Details</h3>
                         <FormField control={form.control} name="fullName" render={({ field }) => (
@@ -155,7 +159,6 @@ export default function NewCustomerPage() {
                     
                     <Separator />
 
-                    {/* KYC Section */}
                     <div className="space-y-4">
                         <h3 className="text-lg font-medium text-primary">KYC Information</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -173,7 +176,6 @@ export default function NewCustomerPage() {
                     
                     <Separator />
                     
-                    {/* Guarantor Details */}
                     <div className="space-y-4">
                         <h3 className="text-lg font-medium text-primary">Guarantor Details</h3>
                         <FormField control={form.control} name="guarantor.name" render={({ field }) => (
@@ -194,7 +196,6 @@ export default function NewCustomerPage() {
 
                     <Separator />
 
-                    {/* Photo Upload */}
                     <div className="space-y-4">
                         <h3 className="text-lg font-medium text-primary">Customer Photo</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
@@ -222,10 +223,9 @@ export default function NewCustomerPage() {
                                                       setPhotoPreview(null);
                                                   }
                                               }}
-                                              {...rest}
                                           />
                                       </FormControl>
-                                      <FormDescription>Must be a clear, passport-sized photo. Max 2MB.</FormDescription>
+                                      <FormDescription>Must be a clear, passport-sized photo. Max 16MB.</FormDescription>
                                       <FormMessage />
                                   </FormItem>
                               )}

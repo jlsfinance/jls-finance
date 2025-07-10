@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Search, PlusCircle, FileDown, Loader2 } from "lucide-react"
 import Link from 'next/link'
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, orderBy, query } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast"
 
@@ -15,10 +15,10 @@ interface Customer {
   id: string;
   name: string;
   phone: string;
-  email: string;
+  email?: string;
   address: string;
   status: string;
-  photo?: string; // photo path, not URL
+  photo_url?: string;
 }
 
 export default function CustomersPage() {
@@ -31,10 +31,10 @@ export default function CustomersPage() {
     const fetchCustomers = async () => {
       setLoading(true);
       try {
-        const querySnapshot = await getDocs(collection(db, "customers"));
+        const q = query(collection(db, "customers"), orderBy("createdAt", "desc"));
+        const querySnapshot = await getDocs(q);
         const customerData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Customer[];
         setCustomers(customerData);
-
       } catch (error: any) {
         console.error("Failed to fetch customers:", error);
         toast({
@@ -112,8 +112,7 @@ export default function CustomersPage() {
                   <TableCell>
                       <div className="flex items-center gap-3">
                           <Avatar>
-                              {/* Using placeholder as we don't have the full URL here */}
-                              <AvatarImage src={placeholderImage} alt={customer.name} data-ai-hint="person" />
+                              <AvatarImage src={customer.photo_url || placeholderImage} alt={customer.name} data-ai-hint="person" />
                               <AvatarFallback>{customer.name.split(' ').map((n: string) => n[0]).join('')}</AvatarFallback>
                           </Avatar>
                           <div className="font-medium">{customer.name}</div>
@@ -121,7 +120,7 @@ export default function CustomersPage() {
                   </TableCell>
                   <TableCell>
                     <div>{customer.phone}</div>
-                    <div className="text-xs text-muted-foreground">{customer.email}</div>
+                    <div className="text-xs text-muted-foreground">{customer.email || 'N/A'}</div>
                   </TableCell>
                   <TableCell>{customer.address}</TableCell>
                   <TableCell>{customer.status}</TableCell>
