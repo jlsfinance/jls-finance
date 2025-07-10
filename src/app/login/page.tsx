@@ -62,7 +62,7 @@ export default function LoginPage() {
     resolver: zodResolver(loginSchema),
     defaultValues: {
       email: "admin@jls.com",
-      password: "password",
+      password: "",
     },
   });
 
@@ -91,7 +91,7 @@ export default function LoginPage() {
       toast({
         variant: "destructive",
         title: "Login Failed",
-        description: error.message || "Invalid credentials. Please try again.",
+        description: "Invalid credentials. Please check your email and password.",
       });
     } finally {
       setLoading(false);
