@@ -19,8 +19,6 @@ import { useAuth } from "@/context/AuthContext";
 import Image from "next/image";
 import { useToast } from "@/hooks/use-toast";
 
-// --- Loan schema and default values ---
-
 const loanSchema = z.object({
   customerId: z.string().min(1, "Select a customer."),
   amount: z.coerce.number().min(1000, "Minimum ₹1000"),
@@ -57,7 +55,6 @@ interface Customer {
   };
 }
 
-// --- Info component for displaying customer fields ---
 const Info: React.FC<{ label: string; value?: string }> = ({ label, value }) =>
   value ? <p className="text-sm"><strong>{label}:</strong> {value}</p> : null;
 
@@ -73,24 +70,20 @@ export default function NewLoanPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formDirty, setFormDirty] = useState(false);
 
-  // --- Setup form ---
   const form = useForm<LoanFormValues>({
     resolver: zodResolver(loanSchema),
     defaultValues: DEFAULT_LOAN_VALUES,
     mode: "onBlur",
   });
 
-  // --- Fetch customers and their loan status ---
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        // Fetch customers
         const custSnap = await getDocs(collection(db, "customers"));
         const allCustomers: Customer[] = custSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
         setCustomers(allCustomers);
 
-        // Fetch loans (only customerId is needed)
         const loansSnap = await getDocs(collection(db, "loans"));
         const loanedCustomerIds = new Set<string>();
         loansSnap.forEach(doc => {
@@ -98,7 +91,6 @@ export default function NewLoanPage() {
           if (data.customerId) loanedCustomerIds.add(data.customerId);
         });
 
-        // Map: customerId => hasLoan
         const loanMap: Record<string, boolean> = {};
         allCustomers.forEach(c => {
           loanMap[c.id] = loanedCustomerIds.has(c.id);
@@ -113,7 +105,6 @@ export default function NewLoanPage() {
     fetchData();
   }, [toast]);
 
-  // --- Dirty form detection (prompt before leaving if dirty) ---
   useEffect(() => {
     const unsubscribe = form.watch(() => setFormDirty(true));
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -129,18 +120,10 @@ export default function NewLoanPage() {
     };
   }, [form, formDirty]);
 
-  // --- Memoized selectedCustomer (optional but not strictly needed) ---
-  // const selectedCustomer = useMemo(() => customers.find(c => c.id === form.watch("customerId")) || null, [form.watch("customerId"), customers]);
-
-  // --- Calculate processing fee dynamically ---
   const amount = form.watch("amount");
   const processingFeePercentage = form.watch("processingFeePercentage");
-  const processingFee = useMemo(
-    () => Math.round((amount * processingFeePercentage) / 100) || 0,
-    [amount, processingFeePercentage]
-  );
+  const processingFee = useMemo(() => Math.round((amount * processingFeePercentage) / 100) || 0, [amount, processingFeePercentage]);
 
-  // --- Submit handler ---
   const onSubmit = async (data: LoanFormValues) => {
     if (!user || !selectedCustomer) return;
     setIsSubmitting(true);
@@ -169,17 +152,12 @@ export default function NewLoanPage() {
       setFormDirty(false);
       router.push("/admin/approvals");
     } catch (e: any) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: e.message || "Could not submit loan.",
-      });
+      toast({ variant: "destructive", title: "Error", description: e.message || "Could not submit loan." });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // --- UI: Customer selection grid ---
   return (
     <div className="max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">Loan Application Form</h1>
@@ -195,41 +173,19 @@ export default function NewLoanPage() {
               {customers.map(customer => {
                 const hasLoan = customerLoans[customer.id];
                 return (
-                  <Card
-                    key={customer.id}
-                    className={`
-                      flex flex-col items-center p-4 gap-2 transition
-                      ${hasLoan ? "opacity-50 bg-gray-100 pointer-events-none" : "hover:shadow-lg"}
-                    `}
-                  >
-                    <Image
-                      src={customer.photo_url || "https://placehold.co/80x80"}
-                      alt={customer.name}
-                      width={80}
-                      height={80}
-                      className="rounded-full object-cover"
-                      loading="lazy"
-                    />
+                  <Card key={customer.id} className={`flex flex-col items-center p-4 gap-2 transition ${hasLoan ? "opacity-50 bg-gray-100 pointer-events-none" : "hover:shadow-lg"}`}>
+                    <Image src={customer.photo_url || "https://placehold.co/80x80"} alt={customer.name} width={80} height={80} className="rounded-full object-cover" loading="lazy" />
                     <div className="text-center font-medium">{customer.name}</div>
                     {hasLoan ? (
-                      <div className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded font-semibold mb-2">
-                        Already Loan Taken
-                      </div>
+                      <div className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded font-semibold mb-2">Already Loan Taken</div>
                     ) : (
-                      <div className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded font-semibold mb-2">
-                        Apply for him now:
-                      </div>
+                      <div className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded font-semibold mb-2">Apply for him now:</div>
                     )}
                     {!hasLoan && (
-                      <Button
-                        className="w-full"
-                        onClick={() => {
-                          form.setValue("customerId", customer.id);
-                          setSelectedCustomer(customer);
-                        }}
-                      >
-                        Apply
-                      </Button>
+                      <Button className="w-full" onClick={() => {
+                        form.setValue("customerId", customer.id);
+                        setSelectedCustomer(customer);
+                      }}>Apply</Button>
                     )}
                   </Card>
                 );
@@ -239,7 +195,6 @@ export default function NewLoanPage() {
         </div>
       )}
 
-      {/* --- Loan form shows after customer is selected --- */}
       {selectedCustomer && (
         <Card className="mt-6">
           <CardHeader>
@@ -251,14 +206,7 @@ export default function NewLoanPage() {
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                 <Card className="bg-muted/50 p-4">
                   <div className="flex items-start gap-4">
-                    <Image
-                      src={selectedCustomer.photo_url || "https://placehold.co/100x100"}
-                      alt={selectedCustomer.name}
-                      width={100}
-                      height={100}
-                      className="rounded-md border object-cover aspect-square"
-                      loading="lazy"
-                    />
+                    <Image src={selectedCustomer.photo_url || "https://placehold.co/100x100"} alt={selectedCustomer.name} width={100} height={100} className="rounded-md border object-cover aspect-square" loading="lazy" />
                     <div className="space-y-1">
                       <h3 className="text-xl font-semibold flex items-center gap-2">
                         <UserCheck /> {selectedCustomer.name}
@@ -274,63 +222,25 @@ export default function NewLoanPage() {
                     <Info label="Voter ID" value={selectedCustomer.voterId} />
                   </div>
                 </Card>
-
                 <Separator />
                 <div className="grid md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="amount"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Loan Amount (₹)</FormLabel>
-                        <FormControl>
-                          <Input {...field} type="number" onBlur={field.onBlur} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="tenure"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Tenure (Months)</FormLabel>
-                        <FormControl>
-                          <Input {...field} type="number" onBlur={field.onBlur} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="interestRate"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Interest Rate (%)</FormLabel>
-                        <FormControl>
-                          <Input {...field} type="number" step="0.1" onBlur={field.onBlur} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="processingFeePercentage"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Processing Fee (%)</FormLabel>
-                        <FormControl>
-                          <Input {...field} type="number" step="0.1" onBlur={field.onBlur} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  {['amount', 'tenure', 'interestRate', 'processingFeePercentage'].map((fieldName, index) => (
+                    <FormField
+                      key={fieldName}
+                      control={form.control}
+                      name={fieldName as keyof LoanFormValues}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel htmlFor={field.name}>{fieldName === 'amount' ? 'Loan Amount (₹)' : fieldName === 'tenure' ? 'Tenure (Months)' : fieldName === 'interestRate' ? 'Interest Rate (%)' : 'Processing Fee (%)'}</FormLabel>
+                          <FormControl>
+                            <Input {...field} id={field.name} name={field.name} type="number" step={fieldName.includes('Rate') || fieldName.includes('Fee') ? 0.1 : 1} onBlur={field.onBlur} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  ))}
                 </div>
-                {/* Show calculated processing fee */}
                 <div className="text-right text-sm text-muted-foreground">
                   Processing Fee: <span className="font-semibold">₹{processingFee}</span>
                 </div>
@@ -339,32 +249,22 @@ export default function NewLoanPage() {
                   name="notes"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Notes</FormLabel>
+                      <FormLabel htmlFor="notes">Notes</FormLabel>
                       <FormControl>
-                        <Textarea {...field} onBlur={field.onBlur} />
+                        <Textarea {...field} id="notes" name="notes" onBlur={field.onBlur} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
                 <div className="flex gap-2">
-                  <Button
-                    type="submit"
-                    className="w-full bg-accent hover:bg-accent/90"
-                    disabled={isSubmitting}
-                  >
-                    {isSubmitting ? (
-                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting...</>
-                    ) : "Submit Application for Approval"}
+                  <Button type="submit" className="w-full bg-accent hover:bg-accent/90" disabled={isSubmitting}>
+                    {isSubmitting ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting...</>) : "Submit Application for Approval"}
                   </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setSelectedCustomer(null);
-                      form.reset(DEFAULT_LOAN_VALUES);
-                    }}
-                  >
+                  <Button type="button" variant="outline" onClick={() => {
+                    setSelectedCustomer(null);
+                    form.reset(DEFAULT_LOAN_VALUES);
+                  }}>
                     Cancel
                   </Button>
                 </div>
