@@ -85,11 +85,11 @@ export default function NewLoanPage() {
     fetchCustomers();
   }, [toast]);
   
+  const customerId = form.watch("customerId");
   useEffect(() => {
-    const customerId = form.watch("customerId");
     const customer = customers.find((c) => c.id === customerId);
     setSelectedCustomer(customer || null);
-  }, [form, customers, form.watch("customerId")]);
+  }, [customerId, customers]);
 
 
   const onSubmit = async (data: LoanApplicationFormValues) => {
@@ -120,7 +120,7 @@ export default function NewLoanPage() {
 
       toast({
         title: "✅ Application Submitted",
-        description: `Loan application for ${selectedCustomer.name} submitted and awaiting approval.`,
+        description: `Loan application submitted and awaiting approval.`,
       });
       router.push("/admin/approvals");
 
@@ -190,7 +190,7 @@ export default function NewLoanPage() {
                                       value={customer.id}
                                       key={customer.id}
                                       onSelect={(currentValue) => {
-                                        form.setValue("customerId", currentValue === field.value ? "" : currentValue)
+                                        field.onChange(currentValue === field.value ? "" : currentValue)
                                         setComboboxOpen(false)
                                       }}
                                     >
@@ -258,34 +258,36 @@ export default function NewLoanPage() {
                 )}
               </div>
 
-              <Separator />
-
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-primary">Loan Details</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <FormField control={form.control} name="amount" render={({ field }) => (
-                    <FormItem><FormLabel>Loan Amount (₹) *</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>
-                  )} />
-                  <FormField control={form.control} name="tenure" render={({ field }) => (
-                    <FormItem><FormLabel>Tenure (Months) *</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>
-                  )} />
+              {selectedCustomer && (
+                <>
+                <Separator />
+                <div className="space-y-4">
+                    <h3 className="text-lg font-medium text-primary">Loan Details</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <FormField control={form.control} name="amount" render={({ field }) => (
+                        <FormItem><FormLabel>Loan Amount (₹) *</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>
+                    )} />
+                    <FormField control={form.control} name="tenure" render={({ field }) => (
+                        <FormItem><FormLabel>Tenure (Months) *</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>
+                    )} />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <FormField control={form.control} name="interestRate" render={({ field }) => (
+                        <FormItem><FormLabel>Interest Rate (% p.a.) *</FormLabel><FormControl><Input type="number" step="0.1" {...field} /></FormControl><FormMessage /></FormItem>
+                    )} />
+                    <FormField control={form.control} name="processingFeePercentage" render={({ field }) => (
+                        <FormItem><FormLabel>Processing Fee (%) *</FormLabel><FormControl><Input type="number" step="0.1" {...field} /></FormControl><FormMessage /></FormItem>
+                    )} />
+                    </div>
+                    <FormField control={form.control} name="notes" render={({ field }) => (
+                        <FormItem><FormLabel>Internal Notes / Remarks</FormLabel><FormControl><Textarea placeholder="Any internal notes about this loan application..." {...field} /></FormControl><FormMessage /></FormItem>
+                    )} />
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <FormField control={form.control} name="interestRate" render={({ field }) => (
-                    <FormItem><FormLabel>Interest Rate (% p.a.) *</FormLabel><FormControl><Input type="number" step="0.1" {...field} /></FormControl><FormMessage /></FormItem>
-                  )} />
-                  <FormField control={form.control} name="processingFeePercentage" render={({ field }) => (
-                    <FormItem><FormLabel>Processing Fee (%) *</FormLabel><FormControl><Input type="number" step="0.1" {...field} /></FormControl><FormMessage /></FormItem>
-                  )} />
-                </div>
-                <FormField control={form.control} name="notes" render={({ field }) => (
-                    <FormItem><FormLabel>Internal Notes / Remarks</FormLabel><FormControl><Textarea placeholder="Any internal notes about this loan application..." {...field} /></FormControl><FormMessage /></FormItem>
-                )} />
-              </div>
-
-              <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isSubmitting || !selectedCustomer}>
-                {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting...</> : "Submit Application for Approval"}
-              </Button>
+                <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isSubmitting}>
+                    {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting...</> : "Submit Application for Approval"}
+                </Button>
+                </>
+              )}
             </form>
           </Form>
         </CardContent>
