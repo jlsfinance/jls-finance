@@ -60,6 +60,18 @@ export default function NewLoanPage() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [comboboxOpen, setComboboxOpen] = useState(false)
 
+  const form = useForm<LoanApplicationFormValues>({
+    resolver: zodResolver(loanApplicationSchema),
+    defaultValues: {
+      customerId: "",
+      amount: 100000,
+      interestRate: 12,
+      tenure: 24,
+      processingFeePercentage: 2,
+      notes: "",
+    },
+  });
+
   useEffect(() => {
     const fetchCustomers = async () => {
       try {
@@ -72,18 +84,13 @@ export default function NewLoanPage() {
     };
     fetchCustomers();
   }, [toast]);
+  
+  useEffect(() => {
+    const customerId = form.watch("customerId");
+    const customer = customers.find((c) => c.id === customerId);
+    setSelectedCustomer(customer || null);
+  }, [form.watch("customerId"), customers]);
 
-  const form = useForm<LoanApplicationFormValues>({
-    resolver: zodResolver(loanApplicationSchema),
-    defaultValues: {
-      customerId: "",
-      amount: 100000,
-      interestRate: 12,
-      tenure: 24,
-      processingFeePercentage: 2,
-      notes: "",
-    },
-  });
 
   const onSubmit = async (data: LoanApplicationFormValues) => {
     if (!user || !selectedCustomer) {
@@ -176,11 +183,10 @@ export default function NewLoanPage() {
                                 <CommandGroup>
                                 {customers.map((customer) => (
                                     <CommandItem
-                                    value={customer.name}
+                                    value={customer.id}
                                     key={customer.id}
-                                    onSelect={() => {
-                                        form.setValue("customerId", customer.id);
-                                        setSelectedCustomer(customer);
+                                    onSelect={(currentValue) => {
+                                        form.setValue("customerId", currentValue === field.value ? "" : currentValue);
                                         setComboboxOpen(false);
                                     }}
                                     >
