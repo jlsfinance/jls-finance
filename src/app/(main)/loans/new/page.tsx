@@ -89,7 +89,7 @@ export default function NewLoanPage() {
     const customerId = form.watch("customerId");
     const customer = customers.find((c) => c.id === customerId);
     setSelectedCustomer(customer || null);
-  }, [form.watch("customerId"), customers]);
+  }, [form, customers]);
 
 
   const onSubmit = async (data: LoanApplicationFormValues) => {
@@ -289,3 +289,5 @@ export default function NewLoanPage() {
     </div>
   );
 }
+
+    
