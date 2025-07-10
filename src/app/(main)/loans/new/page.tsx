@@ -89,7 +89,7 @@ export default function NewLoanPage() {
     const customerId = form.watch("customerId");
     const customer = customers.find((c) => c.id === customerId);
     setSelectedCustomer(customer || null);
-  }, [form, customers]);
+  }, [form, customers, form.watch("customerId")]);
 
 
   const onSubmit = async (data: LoanApplicationFormValues) => {
@@ -170,7 +170,11 @@ export default function NewLoanPage() {
                                 !field.value && "text-muted-foreground"
                               )}
                             >
-                              {selectedCustomer?.name || "Select customer..."}
+                              {field.value
+                                ? customers.find(
+                                    (customer) => customer.id === field.value
+                                  )?.name
+                                : "Select customer..."}
                               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                             </Button>
                           </FormControl>
@@ -183,12 +187,12 @@ export default function NewLoanPage() {
                                 <CommandGroup>
                                 {customers.map((customer) => (
                                     <CommandItem
-                                    value={customer.id}
-                                    key={customer.id}
-                                    onSelect={(currentValue) => {
-                                        form.setValue("customerId", currentValue === field.value ? "" : currentValue);
-                                        setComboboxOpen(false);
-                                    }}
+                                      value={customer.id}
+                                      key={customer.id}
+                                      onSelect={(currentValue) => {
+                                        form.setValue("customerId", currentValue === field.value ? "" : currentValue)
+                                        setComboboxOpen(false)
+                                      }}
                                     >
                                     <Check
                                         className={cn(
@@ -289,5 +293,3 @@ export default function NewLoanPage() {
     </div>
   );
 }
-
-    
