@@ -109,7 +109,7 @@ export default function ApprovalsPage() {
                             </TableRow>
                         ) : applications.length > 0 ? applications.map((app) => (
                             <TableRow key={app.id}>
-                                <TableCell className="font-medium">{app.id}</TableCell>
+                                <TableCell className="font-medium">{app.id.slice(0, 8)}...</TableCell>
                                 <TableCell>{app.customerName}</TableCell>
                                 <TableCell>₹{app.amount.toLocaleString('en-IN')}</TableCell>
                                 <TableCell>{app.date}</TableCell>
