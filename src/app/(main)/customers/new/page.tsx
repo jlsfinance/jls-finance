@@ -1,171 +1,91 @@
 "use client";
 
-// ✨ Copilot Prompt: Create a customer registration form in React using react-hook-form and zod.
-// Upload image to imgbb and save details in Firebase Firestore.
-
-import React, { useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import axios from "axios";
-
-import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/context/AuthContext";
-import { db } from "@/lib/firebase";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { addDoc, collection } from "firebase/firestore";
-
-import { Input } from "@/components/ui/input";
+import { db } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2 } from "lucide-react";
-import Image from "next/image";
+import { useToast } from "@/hooks/use-toast";
 
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-  FormDescription,
-} from "@/components/ui/form";
-
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
-
-import { Separator } from "@/components/ui/separator";
-
-// ✅ imgbb API key (hardcoded)
-const IMGBB_API_KEY = "c9f4edabbd1fe1bc3a063e26bc6a2ecd";
-
-// ✅ Schema
-const customerFormSchema = z.object({
-  fullName: z.string().min(2, "Full name is required."),
-  mobile: z.string().length(10, "Enter 10-digit mobile number."),
-  address: z.string().min(10, "Full address is required."),
-  aadhaar: z.string().length(12).optional().or(z.literal("")),
-  pan: z.string().length(10).optional().or(z.literal("")),
-  voterId: z.string().min(5).optional().or(z.literal("")),
-  guarantor: z
-    .object({
-      name: z.string().optional(),
-      relation: z.string().optional(),
-      mobile: z.string().length(10).optional().or(z.literal("")),
-      address: z.string().optional(),
-    })
-    .optional(),
+// ✅ Zod Validation Schema
+const customerSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  phone: z.string().min(10, "Phone number must be at least 10 digits"),
+  address: z.string().min(1, "Address is required"),
+  aadhaar: z.string().optional(),
+  pan: z.string().optional(),
+  voterId: z.string().optional(),
   photo: z
-    .instanceof(FileList)
-    .refine((f) => f.length > 0, "Photo is required."),
+    .any()
+    .refine((file) => file && file.length > 0 && file[0]?.size > 0, "Photo is required"),
 });
 
-type CustomerFormValues = z.infer<typeof customerFormSchema>;
+type CustomerFormValues = z.infer<typeof customerSchema>;
 
-export default function NewCustomerPage() {
+export default function CustomerRegistrationForm() {
   const router = useRouter();
   const { toast } = useToast();
-  const { user } = useAuth();
-
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<CustomerFormValues>({
-    resolver: zodResolver(customerFormSchema),
-    defaultValues: {
-      fullName: "",
-      mobile: "",
-      address: "",
-      aadhaar: "",
-      pan: "",
-      voterId: "",
-      guarantor: {
-        name: "",
-        relation: "",
-        mobile: "",
-        address: "",
-      },
-    },
+    resolver: zodResolver(customerSchema),
   });
 
-  const onSubmit = async (values: CustomerFormValues) => {
-    if (!user) {
-      toast({
-        variant: "destructive",
-        title: "Not Authenticated",
-        description: "Please login to continue.",
-      });
-      return;
+  // ✅ Photo Upload Function (imgbb)
+  const uploadPhotoToImgBB = async (photo: File) => {
+    const formData = new FormData();
+    formData.append("image", photo);
+
+    const imgbbApiKey = "c9f4edabbd1fe1bc3a063e26bc6a2ecd"; // ✅ Your working API key
+    const response = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbApiKey}`, {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+      throw new Error("Photo upload failed");
     }
+    return data.data.url;
+  };
 
+  // ✅ Submit Handler
+  const onSubmit = async (data: CustomerFormValues) => {
     setIsSubmitting(true);
-    let photoUrl = "";
-
     try {
-      const file = values.photo?.[0];
-      if (file.size > 16 * 1024 * 1024) {
-        throw new Error("Photo too large. Max 16MB.");
-      }
+      const photoURL = await uploadPhotoToImgBB(data.photo[0]);
 
-      // ✅ Upload to imgbb
-      const formData = new FormData();
-      formData.append("image", file);
-
-      const res = await axios.post(
-        `https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`,
-        formData,
-        { headers: { "Content-Type": "multipart/form-data" } }
-      );
-
-      if (res.data?.data?.url) {
-        photoUrl = res.data.data.url;
-      } else {
-        throw new Error("imgbb upload failed. Try again.");
-      }
-
-      // ✅ Save to Firestore
       await addDoc(collection(db, "customers"), {
-        name: values.fullName,
-        phone: values.mobile,
-        address: values.address,
-        aadhaar: values.aadhaar || null,
-        pan: values.pan || null,
-        voterId: values.voterId || null,
-        guarantor:
-          values.guarantor && (values.guarantor.name || values.guarantor.mobile)
-            ? {
-                name: values.guarantor.name || null,
-                relation: values.guarantor.relation || null,
-                mobile: values.guarantor.mobile || null,
-                address: values.guarantor.address || null,
-              }
-            : null,
-        photo_url: photoUrl,
-        status: "Active",
-        createdBy: user.uid,
+        name: data.name,
+        phone: data.phone,
+        address: data.address,
+        aadhaar: data.aadhaar || null,
+        pan: data.pan || null,
+        voterId: data.voterId || null,
+        photo_url: photoURL,
         createdAt: new Date().toISOString(),
       });
 
       toast({
-        title: "✅ Customer Added",
-        description: `${values.fullName} has been registered.`,
+        title: "Customer Registered",
+        description: "The customer has been added successfully.",
       });
 
       router.push("/customers");
     } catch (error: any) {
-      console.error("Error submitting form:", error);
+      console.error("Form Submission Error:", error);
       toast({
         variant: "destructive",
-        title: "Registration Failed",
+        title: "Error",
         description:
-          error?.response?.data?.error?.message ||
-          error.message ||
-          "Something went wrong.",
+          error.message === "Photo upload failed"
+            ? "Photo upload failed. Please try again."
+            : "Network error occurred. Please try again.",
       });
     } finally {
       setIsSubmitting(false);
@@ -173,161 +93,66 @@ export default function NewCustomerPage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <h1 className="text-2xl font-semibold">New Customer Registration</h1>
-      <Card>
-        <CardHeader>
-          <CardTitle>Customer Form</CardTitle>
-          <CardDescription>Fill all required fields.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              {/* Basic Info */}
-              <FormField
-                control={form.control}
-                name="fullName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Full Name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="John Doe" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="mobile"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Mobile</FormLabel>
-                    <FormControl>
-                      <Input placeholder="9876543210" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="address"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Address</FormLabel>
-                    <FormControl>
-                      <Textarea placeholder="Full address..." {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+    <div className="max-w-lg mx-auto">
+      <h1 className="text-2xl font-bold mb-6">Register New Customer</h1>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <div>
+          <label htmlFor="name" className="block text-sm font-medium">
+            Full Name
+          </label>
+          <Input id="name" type="text" {...form.register("name")} placeholder="Enter full name" />
+          <p className="text-red-500 text-sm">{form.formState.errors.name?.message}</p>
+        </div>
 
-              {/* KYC */}
-              <Separator />
-              <h3 className="font-medium text-primary">KYC Info</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {["aadhaar", "pan", "voterId"].map((key) => (
-                  <FormField
-                    key={key}
-                    control={form.control}
-                    name={key as keyof CustomerFormValues}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{key.toUpperCase()}</FormLabel>
-                        <FormControl>
-                          <Input {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                ))}
-              </div>
+        <div>
+          <label htmlFor="phone" className="block text-sm font-medium">
+            Phone Number
+          </label>
+          <Input id="phone" type="text" {...form.register("phone")} placeholder="Enter phone" />
+          <p className="text-red-500 text-sm">{form.formState.errors.phone?.message}</p>
+        </div>
 
-              {/* Guarantor */}
-              <Separator />
-              <h3 className="font-medium text-primary">Guarantor</h3>
-              {["name", "relation", "mobile", "address"].map((key) => (
-                <FormField
-                  key={key}
-                  control={form.control}
-                  name={`guarantor.${key}` as any}
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{key.charAt(0).toUpperCase() + key.slice(1)}</FormLabel>
-                      <FormControl>
-                        {key === "address" ? (
-                          <Textarea {...field} />
-                        ) : (
-                          <Input {...field} />
-                        )}
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              ))}
+        <div>
+          <label htmlFor="address" className="block text-sm font-medium">
+            Address
+          </label>
+          <Textarea id="address" {...form.register("address")} placeholder="Enter address" />
+          <p className="text-red-500 text-sm">{form.formState.errors.address?.message}</p>
+        </div>
 
-              {/* Photo */}
-              <Separator />
-              <h3 className="font-medium text-primary">Photo Upload</h3>
-              <FormField
-                control={form.control}
-                name="photo"
-                render={({ field: { onChange, ...rest } }) => (
-                  <FormItem>
-                    <FormLabel>Photo *</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            onChange(e.target.files);
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                              setPhotoPreview(reader.result as string);
-                            };
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                      />
-                    </FormControl>
-                    <FormDescription>Max 16MB.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              {photoPreview && (
-                <div className="w-32 h-32 rounded-md border mt-2 overflow-hidden">
-                  <Image
-                    src={photoPreview}
-                    alt="Preview"
-                    width={128}
-                    height={128}
-                    className="object-cover w-full h-full"
-                  />
-                </div>
-              )}
+        <div>
+          <label htmlFor="aadhaar" className="block text-sm font-medium">
+            Aadhaar (Optional)
+          </label>
+          <Input id="aadhaar" type="text" {...form.register("aadhaar")} />
+        </div>
 
-              {/* Submit */}
-              <Button type="submit" className="w-full" disabled={isSubmitting}>
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="animate-spin mr-2 w-4 h-4" />
-                    Saving...
-                  </>
-                ) : (
-                  "Save Customer"
-                )}
-              </Button>
-            </form>
-          </Form>
-        </CardContent>
-      </Card>
+        <div>
+          <label htmlFor="pan" className="block text-sm font-medium">
+            PAN (Optional)
+          </label>
+          <Input id="pan" type="text" {...form.register("pan")} />
+        </div>
+
+        <div>
+          <label htmlFor="voterId" className="block text-sm font-medium">
+            Voter ID (Optional)
+          </label>
+          <Input id="voterId" type="text" {...form.register("voterId")} />
+        </div>
+
+        <div>
+          <label htmlFor="photo" className="block text-sm font-medium">
+            Photo
+          </label>
+          <Input id="photo" type="file" accept="image/*" {...form.register("photo")} />
+          <p className="text-red-500 text-sm">{form.formState.errors.photo?.message}</p>
+        </div>
+
+        <Button type="submit" className="w-full" disabled={isSubmitting}>
+          {isSubmitting ? "Submitting..." : "Register Customer"}
+        </Button>
+      </form>
     </div>
   );
 }
