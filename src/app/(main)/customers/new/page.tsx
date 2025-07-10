@@ -1,502 +1,333 @@
 "use client";
 
+// ✨ Copilot Prompt: Create a customer registration form in React using react-hook-form and zod.
+// Upload image to imgbb and save details in Firebase Firestore.
 
-import React, { useState } from "react"
-
-import { useRouter } from "next/navigation"
-
-import { useForm } from "react-hook-form"
-
-import { zodResolver } from "@hookform/resolvers/zod"
-
-import { z } from "zod"
-
-import { useToast } from "@/hooks/use-toast"
-
-import Image from "next/image"
-
-import { Button } from "@/components/ui/button"
-
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form"
-
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-
-import { Input } from "@/components/ui/input"
-
-import { Loader2 } from "lucide-react"
-
-import { db } from "@/lib/firebase"
-
-import { addDoc, collection } from "firebase/firestore"
-
-import { useAuth } from "@/context/AuthContext"
-
-import { Textarea } from "@/components/ui/textarea"
-
-import { Separator } from "@/components/ui/separator"
-
+import React, { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import axios from "axios";
 
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/AuthContext";
+import { db } from "@/lib/firebase";
+import { addDoc, collection } from "firebase/firestore";
 
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Loader2 } from "lucide-react";
+import Image from "next/image";
+
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+  FormDescription,
+} from "@/components/ui/form";
+
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+
+import { Separator } from "@/components/ui/separator";
+
+// ✅ imgbb API key (hardcoded)
+const IMGBB_API_KEY = "c9f4edabbd1fe1bc3a063e26bc6a2ecd";
+
+// ✅ Schema
 const customerFormSchema = z.object({
-
-  fullName: z.string().min(2, { message: "Full name is required." }),
-
-  mobile: z.string().length(10, { message: "A valid 10-digit mobile number is required." }),
-
-  address: z.string().min(10, { message: "Full address is required." }),
-
-  aadhaar: z.string().length(12, "Aadhaar must be 12 digits.").optional().or(z.literal('')),
-
-  pan: z.string().length(10, "PAN must be 10 characters.").optional().or(z.literal('')),
-
-  voterId: z.string().min(5, "Voter ID seems too short.").optional().or(z.literal('')),
-
-  guarantor: z.object({
-
-    name: z.string().optional(),
-
-    relation: z.string().optional(),
-
-    mobile: z.string().length(10, "Must be a 10-digit mobile number.").optional().or(z.literal('')),
-
-    address: z.string().optional(),
-
-  }).optional(),
-
-  photo: z.instanceof(FileList).refine(files => files?.length >= 1, "Photo is required."),
-
+  fullName: z.string().min(2, "Full name is required."),
+  mobile: z.string().length(10, "Enter 10-digit mobile number."),
+  address: z.string().min(10, "Full address is required."),
+  aadhaar: z.string().length(12).optional().or(z.literal("")),
+  pan: z.string().length(10).optional().or(z.literal("")),
+  voterId: z.string().min(5).optional().or(z.literal("")),
+  guarantor: z
+    .object({
+      name: z.string().optional(),
+      relation: z.string().optional(),
+      mobile: z.string().length(10).optional().or(z.literal("")),
+      address: z.string().optional(),
+    })
+    .optional(),
+  photo: z
+    .instanceof(FileList)
+    .refine((f) => f.length > 0, "Photo is required."),
 });
-
 
 type CustomerFormValues = z.infer<typeof customerFormSchema>;
 
-
-const IMGBB_API_KEY = "c9f4edabbd1fe1bc3a063e26bc6a2ecd";
-
-
 export default function NewCustomerPage() {
+  const router = useRouter();
+  const { toast } = useToast();
+  const { user } = useAuth();
 
-    const router = useRouter();
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const { toast } = useToast();
+  const form = useForm<CustomerFormValues>({
+    resolver: zodResolver(customerFormSchema),
+    defaultValues: {
+      fullName: "",
+      mobile: "",
+      address: "",
+      aadhaar: "",
+      pan: "",
+      voterId: "",
+      guarantor: {
+        name: "",
+        relation: "",
+        mobile: "",
+        address: "",
+      },
+    },
+  });
 
-    const { user } = useAuth();
-
-    const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-
-    const [isSubmitting, setIsSubmitting] = useState(false);
-
-
-    const form = useForm<CustomerFormValues>({
-
-        resolver: zodResolver(customerFormSchema),
-
-        defaultValues: {
-
-            fullName: "",
-
-            mobile: "",
-
-            address: "",
-
-            aadhaar: "",
-
-            pan: "",
-
-            voterId: "",
-
-            guarantor: {
-
-                name: "",
-
-                relation: "",
-
-                mobile: "",
-
-                address: "",
-
-            }
-
-        },
-
-    });
-
-
-  async function onSubmit(values: CustomerFormValues) {
-
+  const onSubmit = async (values: CustomerFormValues) => {
     if (!user) {
-
-        toast({ variant: "destructive", title: "Not Authenticated", description: "You must be logged in to create a customer." });
-
-        return;
-
-    }
-
-    if (!db) {
-
-        toast({ variant: "destructive", title: "Configuration Error", description: "Firebase is not configured correctly." });
-
-        return;
-
+      toast({
+        variant: "destructive",
+        title: "Not Authenticated",
+        description: "Please login to continue.",
+      });
+      return;
     }
 
     setIsSubmitting(true);
+    let photoUrl = "";
 
     try {
-
-      let photoUrl = '';
-
-      const photoFile = values.photo?.[0];
-
-
-      if (photoFile) {
-
-        const formData = new FormData();
-
-        formData.append("image", photoFile);
-
-        
-
-        const response = await axios.post(
-
-            `https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`,
-
-            formData
-
-        );
-
-
-        if (response.data.success) {
-
-            photoUrl = response.data.data.url;
-
-        } else {
-
-            throw new Error("Image upload to imgbb failed.");
-
-        }
-
+      const file = values.photo?.[0];
+      if (file.size > 16 * 1024 * 1024) {
+        throw new Error("Photo too large. Max 16MB.");
       }
 
+      // ✅ Upload to imgbb
+      const formData = new FormData();
+      formData.append("image", file);
 
-      await addDoc(collection(db, 'customers'), {
+      const res = await axios.post(
+        `https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`,
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } }
+      );
 
-          name: values.fullName,
+      if (res.data?.data?.url) {
+        photoUrl = res.data.data.url;
+      } else {
+        throw new Error("imgbb upload failed. Try again.");
+      }
 
-          phone: values.mobile,
-
-          address: values.address,
-
-          aadhaar: values.aadhaar || null,
-
-          pan: values.pan || null,
-
-          voterId: values.voterId || null,
-
-          guarantor: values.guarantor && (values.guarantor.name || values.guarantor.mobile) ? {
-
-              name: values.guarantor.name || null,
-
-              relation: values.guarantor.relation || null,
-
-              mobile: values.guarantor.mobile || null,
-
-              address: values.guarantor.address || null,
-
-          } : null,
-
-          photo_url: photoUrl,
-
-          status: 'Active',
-
-          createdBy: user.uid,
-
-          createdAt: new Date().toISOString(),
-
+      // ✅ Save to Firestore
+      await addDoc(collection(db, "customers"), {
+        name: values.fullName,
+        phone: values.mobile,
+        address: values.address,
+        aadhaar: values.aadhaar || null,
+        pan: values.pan || null,
+        voterId: values.voterId || null,
+        guarantor:
+          values.guarantor && (values.guarantor.name || values.guarantor.mobile)
+            ? {
+                name: values.guarantor.name || null,
+                relation: values.guarantor.relation || null,
+                mobile: values.guarantor.mobile || null,
+                address: values.guarantor.address || null,
+              }
+            : null,
+        photo_url: photoUrl,
+        status: "Active",
+        createdBy: user.uid,
+        createdAt: new Date().toISOString(),
       });
 
-
       toast({
-
-        title: "✅ Customer Registered",
-
-        description: `${values.fullName} has been successfully added.`,
-
+        title: "✅ Customer Added",
+        description: `${values.fullName} has been registered.`,
       });
 
       router.push("/customers");
-
-
-    } catch(error: any) {
-
-        console.error("Failed to register customer:", error);
-
-        const errorMessage = error.response?.data?.error?.message || error.message || "Could not save the new customer. Please try again.";
-
-        toast({
-
-            variant: "destructive",
-
-            title: "Registration Failed",
-
-            description: errorMessage,
-
-        });
-
+    } catch (error: any) {
+      console.error("Error submitting form:", error);
+      toast({
+        variant: "destructive",
+        title: "Registration Failed",
+        description:
+          error?.response?.data?.error?.message ||
+          error.message ||
+          "Something went wrong.",
+      });
     } finally {
-
-        setIsSubmitting(false);
-
+      setIsSubmitting(false);
     }
-
   };
 
-
   return (
-
-    <div className="space-y-6">
-
-       <h1 className="text-2xl font-headline font-semibold">New Customer Registration</h1>
-
-        <Card className="max-w-4xl mx-auto shadow-lg">
-
-             <CardHeader>
-
-                <CardTitle>Customer Registration Form</CardTitle>
-
-                <CardDescription>Fill out the form below to add a new customer to the system.</CardDescription>
-
-            </CardHeader>
-
-            <CardContent>
-
-             <Form {...form}>
-
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-
-                    
-
-                    <div className="space-y-4">
-
-                        <h3 className="text-lg font-medium text-primary">Personal & Contact Details</h3>
-
-                        <FormField control={form.control} name="fullName" render={({ field }) => (
-
-                            <FormItem><FormLabel>Full Name *</FormLabel><FormControl><Input placeholder="John Doe" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-
-                        )} />
-
-                        <FormField control={form.control} name="mobile" render={({ field }) => (
-
-                            <FormItem><FormLabel>Mobile Number *</FormLabel><FormControl><Input placeholder="9876543210" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-
-                        )} />
-
-                        <FormField control={form.control} name="address" render={({ field }) => (
-
-                            <FormItem><FormLabel>Full Address *</FormLabel><FormControl><Textarea placeholder="123, Main Street, New Delhi" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-
-                        )} />
-
-                    </div>
-
-                    
-
-                    <Separator />
-
-
-                    <div className="space-y-4">
-
-                        <h3 className="text-lg font-medium text-primary">KYC Information</h3>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-                            <FormField control={form.control} name="aadhaar" render={({ field }) => (
-
-                                <FormItem><FormLabel>Aadhaar Number</FormLabel><FormControl><Input placeholder="12-digit number" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-
-                            )} />
-
-                            <FormField control={form.control} name="pan" render={({ field }) => (
-
-                                <FormItem><FormLabel>PAN Number</FormLabel><FormControl><Input placeholder="10-character alphanumeric" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-
-                            )} />
-
-                            <FormField control={form.control} name="voterId" render={({ field }) => (
-
-                                <FormItem><FormLabel>Voter ID</FormLabel><FormControl><Input placeholder="Voter card number" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-
-                            )} />
-
-                        </div>
-
-                    </div>
-
-                    
-
-                    <Separator />
-
-                    
-
-                    <div className="space-y-4">
-
-                        <h3 className="text-lg font-medium text-primary">Guarantor Details</h3>
-
-                        <FormField control={form.control} name="guarantor.name" render={({ field }) => (
-
-                            <FormItem><FormLabel>Guarantor Name</FormLabel><FormControl><Input placeholder="Jane Smith" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-
-                        )} />
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-                             <FormField control={form.control} name="guarantor.relation" render={({ field }) => (
-
-                                <FormItem><FormLabel>Relation to Customer</FormLabel><FormControl><Input placeholder="Spouse, Father, etc." {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-
-                            )} />
-
-                            <FormField control={form.control} name="guarantor.mobile" render={({ field }) => (
-
-                                <FormItem><FormLabel>Guarantor Mobile</FormLabel><FormControl><Input placeholder="9876543211" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-
-                            )} />
-
-                        </div>
-
-                        <FormField control={form.control} name="guarantor.address" render={({ field }) => (
-
-                            <FormItem><FormLabel>Guarantor Address</FormLabel><FormControl><Textarea placeholder="Guarantor's full address" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-
-                        )} />
-
-                    </div>
-
-
-                    <Separator />
-
-
-                    <div className="space-y-4">
-
-                        <h3 className="text-lg font-medium text-primary">Customer Photo</h3>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
-
-                             <FormField
-
-                              control={form.control}
-
-                              name="photo"
-
-                              render={({ field: { onChange, ...rest } }) => (
-
-                                  <FormItem>
-
-                                      <FormLabel>Upload Photo *</FormLabel>
-
-                                      <FormControl>
-
-                                          <Input
-
-                                              type="file"
-
-                                              accept="image/png, image/jpeg, image/jpg"
-
-                                              onChange={(event) => {
-
-                                                  const files = event.target.files;
-
-                                                  onChange(files);
-
-                                                  const file = files?.[0];
-
-                                                  if (file) {
-
-                                                      const reader = new FileReader();
-
-                                                      reader.onloadend = () => {
-
-                                                          setPhotoPreview(reader.result as string);
-
-                                                      };
-
-                                                      reader.readAsDataURL(file);
-
-                                                  } else {
-
-                                                      setPhotoPreview(null);
-
-                                                  }
-
-                                              }}
-
-                                          />
-
-                                      </FormControl>
-
-                                      <FormDescription>Must be a clear, passport-sized photo. Max 16MB.</FormDescription>
-
-                                      <FormMessage />
-
-                                  </FormItem>
-
-                              )}
-
-                            />
-
-                            {photoPreview && (
-
-                              <div className="flex justify-center items-center p-4 border rounded-md bg-muted/50">
-
-                                  <Image
-
-                                      src={photoPreview}
-
-                                      alt="Customer Photo Preview"
-
-                                      width={150}
-
-                                      height={150}
-
-                                      className="rounded-lg object-cover aspect-square"
-
-                                  />
-
-                              </div>
-
-                            )}
-
-                        </div>
-
-                    </div>
-
-
-
-                    <div className="mt-8 flex justify-end">
-
-                        <Button type="submit" className="bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isSubmitting}>
-
-                            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-
-                            Save Customer
-
-                        </Button>
-
-                    </div>
-
-                </form>
-
-            </Form>
-
-            </CardContent>
-
-        </Card>
-
+    <div className="max-w-3xl mx-auto space-y-6">
+      <h1 className="text-2xl font-semibold">New Customer Registration</h1>
+      <Card>
+        <CardHeader>
+          <CardTitle>Customer Form</CardTitle>
+          <CardDescription>Fill all required fields.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+              {/* Basic Info */}
+              <FormField
+                control={form.control}
+                name="fullName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Full Name</FormLabel>
+                    <FormControl>
+                      <Input placeholder="John Doe" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="mobile"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Mobile</FormLabel>
+                    <FormControl>
+                      <Input placeholder="9876543210" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="address"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Address</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="Full address..." {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* KYC */}
+              <Separator />
+              <h3 className="font-medium text-primary">KYC Info</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {["aadhaar", "pan", "voterId"].map((key) => (
+                  <FormField
+                    key={key}
+                    control={form.control}
+                    name={key as keyof CustomerFormValues}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{key.toUpperCase()}</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ))}
+              </div>
+
+              {/* Guarantor */}
+              <Separator />
+              <h3 className="font-medium text-primary">Guarantor</h3>
+              {["name", "relation", "mobile", "address"].map((key) => (
+                <FormField
+                  key={key}
+                  control={form.control}
+                  name={`guarantor.${key}` as any}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{key.charAt(0).toUpperCase() + key.slice(1)}</FormLabel>
+                      <FormControl>
+                        {key === "address" ? (
+                          <Textarea {...field} />
+                        ) : (
+                          <Input {...field} />
+                        )}
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              ))}
+
+              {/* Photo */}
+              <Separator />
+              <h3 className="font-medium text-primary">Photo Upload</h3>
+              <FormField
+                control={form.control}
+                name="photo"
+                render={({ field: { onChange, ...rest } }) => (
+                  <FormItem>
+                    <FormLabel>Photo *</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            onChange(e.target.files);
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setPhotoPreview(reader.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </FormControl>
+                    <FormDescription>Max 16MB.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              {photoPreview && (
+                <div className="w-32 h-32 rounded-md border mt-2 overflow-hidden">
+                  <Image
+                    src={photoPreview}
+                    alt="Preview"
+                    width={128}
+                    height={128}
+                    className="object-cover w-full h-full"
+                  />
+                </div>
+              )}
+
+              {/* Submit */}
+              <Button type="submit" className="w-full" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="animate-spin mr-2 w-4 h-4" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save Customer"
+                )}
+              </Button>
+            </form>
+          </Form>
+        </CardContent>
+      </Card>
     </div>
-
   );
-
 }
-	
