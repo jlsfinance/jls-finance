@@ -37,22 +37,22 @@ export default function CustomerRegistrationForm() {
   });
 
   // ✅ Photo Upload Function (imgbb)
-  const uploadPhotoToImgBB = async (photo: File) => {
-    const formData = new FormData();
-    formData.append("image", photo);
+  // const uploadPhotoToImgBB = async (photo: File) => {
+  //   const formData = new FormData();
+  //   formData.append("image", photo);
 
-    const imgbbApiKey = "c9f4edabbd1fe1bc3a063e26bc6a2ecd"; // ✅ Your working API key
-    const response = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbApiKey}`, {
-      method: "POST",
-      body: formData,
-    });
+  //   const imgbbApiKey = "c9f4edabbd1fe1bc3a063e26bc6a2ecd"; // ✅ Your working API key
+  //   const response = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbApiKey}`, {
+  //     method: "POST",
+  //     body: formData,
+  //   });
 
-    const data = await response.json();
-    if (!response.ok || !data.success) {
-      throw new Error("Photo upload failed");
-    }
-    return data.data.url;
-  };
+  //   const data = await response.json();
+  //   if (!response.ok || !data.success) {
+  //     throw new Error("Photo upload failed");
+  //   }
+  //   return data.data.url;
+  // };
 
   // ✅ Submit Handler
   const onSubmit = async (data: CustomerFormValues) => {
