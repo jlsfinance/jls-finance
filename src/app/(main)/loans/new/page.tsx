@@ -34,7 +34,7 @@ const DEFAULT_LOAN_VALUES: LoanFormValues = {
   amount: 100000,
   interestRate: 12,
   tenure: 12,
-  processingFeePercentage: 2,
+  processingFeePercentage: 5,
   notes: "",
 };
 
@@ -68,7 +68,6 @@ export default function NewLoanPage() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formDirty, setFormDirty] = useState(false);
 
   const form = useForm<LoanFormValues>({
     resolver: zodResolver(loanSchema),
@@ -105,21 +104,6 @@ export default function NewLoanPage() {
     fetchData();
   }, [toast]);
 
-  useEffect(() => {
-    const unsubscribe = form.watch(() => setFormDirty(true));
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (formDirty) {
-        e.preventDefault();
-        e.returnValue = "";
-      }
-    };
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => {
-      unsubscribe();
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-    };
-  }, [form, formDirty]);
-
   const amount = form.watch("amount");
   const processingFeePercentage = form.watch("processingFeePercentage");
   const processingFee = useMemo(() => Math.round((amount * processingFeePercentage) / 100) || 0, [amount, processingFeePercentage]);
@@ -149,7 +133,6 @@ export default function NewLoanPage() {
         date: new Date().toISOString().split("T")[0],
       });
       toast({ title: "Loan Submitted", description: "Application is awaiting approval." });
-      setFormDirty(false);
       router.push("/admin/approvals");
     } catch (e: any) {
       toast({ variant: "destructive", title: "Error", description: e.message || "Could not submit loan." });
@@ -176,9 +159,7 @@ export default function NewLoanPage() {
                   <Card key={customer.id} className={`flex flex-col items-center p-4 gap-2 transition ${hasLoan ? "opacity-50 bg-gray-100 pointer-events-none" : "hover:shadow-lg"}`}>
                     <Image src={customer.photo_url || "https://placehold.co/80x80"} alt={customer.name} width={80} height={80} className="rounded-full object-cover" loading="lazy" />
                     <div className="text-center font-medium">{customer.name}</div>
-                    {hasLoan ? (
-                      <div className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded font-semibold mb-2">Already Loan Taken</div>
-                    ) : (
+                    {!hasLoan && (
                       <div className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded font-semibold mb-2">Apply for him now:</div>
                     )}
                     {!hasLoan && (
