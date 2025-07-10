@@ -22,10 +22,7 @@ const customerSchema = z.object({
   voterId: z.string().optional(),
   photo: z
     .any()
-    .refine(
-      (file) => file && file.length > 0 && file[0]?.size > 0,
-      "Photo is required"
-    ),
+    .refine((file) => file && file.length > 0 && file[0]?.size > 0, "Photo is required"),
 });
 
 type CustomerFormValues = z.infer<typeof customerSchema>;
@@ -40,30 +37,32 @@ export default function CustomerRegistrationForm() {
   });
 
   // ✅ Photo Upload Function using FreeImage.host
-  const uploadPhotoToFreeImage = async (photo: File): Promise<string> => {
+  const uploadPhotoToFreeImageHost = async (photo: File): Promise<string> => {
     const formData = new FormData();
-    formData.append("key", "6d207e02198a847aa98d0a2a901485a5"); // ← Replace with your FreeImage.host API key
+    formData.append("key", "YOUR_API_KEY"); // 🔁 Replace with your FreeImage.host API key
     formData.append("action", "upload");
     formData.append("source", photo);
     formData.append("format", "json");
 
-    const res = await fetch("https://freeimage.host/api/1/upload/", {
+    const response = await fetch("https://freeimage.host/api/1/upload", {
       method: "POST",
       body: formData,
     });
 
-    const data = await res.json();
+    const data = await response.json();
 
-    if (!res.ok || data.status_code !== 200) {
+    if (!response.ok || data.status_code !== 200) {
       throw new Error("Photo upload failed");
     }
-    return data.image.url; // Returned hosted image URL :contentReference[oaicite:1]{index=1}
+
+    return data.image.url;
   };
 
+  // ✅ Submit Handler
   const onSubmit = async (data: CustomerFormValues) => {
     setIsSubmitting(true);
     try {
-      const photoURL = await uploadPhotoToFreeImage(data.photo[0]);
+      const photoURL = await uploadPhotoToFreeImageHost(data.photo[0]);
 
       await addDoc(collection(db, "customers"), {
         name: data.name,
@@ -80,6 +79,7 @@ export default function CustomerRegistrationForm() {
         title: "Customer Registered",
         description: "The customer has been added successfully.",
       });
+
       router.push("/customers");
     } catch (error: any) {
       console.error("Form Submission Error:", error);
@@ -100,7 +100,51 @@ export default function CustomerRegistrationForm() {
     <div className="max-w-lg mx-auto">
       <h1 className="text-2xl font-bold mb-6">Register New Customer</h1>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        {/* ...other form fields... */}
+        <div>
+          <label htmlFor="name" className="block text-sm font-medium">
+            Full Name
+          </label>
+          <Input id="name" type="text" {...form.register("name")} placeholder="Enter full name" />
+          <p className="text-red-500 text-sm">{form.formState.errors.name?.message}</p>
+        </div>
+
+        <div>
+          <label htmlFor="phone" className="block text-sm font-medium">
+            Phone Number
+          </label>
+          <Input id="phone" type="text" {...form.register("phone")} placeholder="Enter phone" />
+          <p className="text-red-500 text-sm">{form.formState.errors.phone?.message}</p>
+        </div>
+
+        <div>
+          <label htmlFor="address" className="block text-sm font-medium">
+            Address
+          </label>
+          <Textarea id="address" {...form.register("address")} placeholder="Enter address" />
+          <p className="text-red-500 text-sm">{form.formState.errors.address?.message}</p>
+        </div>
+
+        <div>
+          <label htmlFor="aadhaar" className="block text-sm font-medium">
+            Aadhaar (Optional)
+          </label>
+          <Input id="aadhaar" type="text" {...form.register("aadhaar")} />
+        </div>
+
+        <div>
+          <label htmlFor="pan" className="block text-sm font-medium">
+            PAN (Optional)
+          </label>
+          <Input id="pan" type="text" {...form.register("pan")} />
+        </div>
+
+        <div>
+          <label htmlFor="voterId" className="block text-sm font-medium">
+            Voter ID (Optional)
+          </label>
+          <Input id="voterId" type="text" {...form.register("voterId")} />
+        </div>
+
         <div>
           <label htmlFor="photo" className="block text-sm font-medium">
             Photo
