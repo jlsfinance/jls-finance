@@ -1,157 +1,176 @@
-"use client"
-
-import React, { useEffect, useState, useMemo } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Download, Printer, Loader2 } from 'lucide-react';
-import { useToast } from "@/hooks/use-toast";
-import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { addMonths, startOfMonth, format, parse, isValid } from 'date-fns';
-import { doc, updateDoc, getDoc } from "firebase/firestore";
+"use client";
+import React, { useEffect, useState, useMemo } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import {
+  Card, CardContent, CardDescription,
+  CardHeader, CardTitle
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog, DialogContent, DialogHeader,
+  DialogTitle, DialogFooter, DialogClose
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { ArrowLeft, Download, Printer, Loader2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { format, parseISO, addMonths, startOfMonth } from "date-fns";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
-// EMI & Loan interfaces (same as before)
-interface Emi { emiNumber: number; dueDate: string; amount: number; status: 'Paid'|'Pending'; paymentDate?: string; paymentMethod?: string; amountPaid?: number; }
-interface Loan { id: string; customerId: string; customerName: string; amount: number; tenure: number; interestRate: number; processingFee: number; emi: number; date: string; status: string; approvalDate?: string; disbursalDate?: string; repaymentSchedule: Emi[]; }
+interface Emi { /* ... same */ }
+interface Loan { /* ... same */ }
 
-export default function LoanDetailsClient() {
+export default function LoanDetailsPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const loanId = searchParams.get('id');
+  const { loanId } = useParams();
   const { toast } = useToast();
 
-  const [loan, setLoan] = useState<Loan|null>(null);
+  const [loan, setLoan] = useState<Loan | null>(null);
   const [loading, setLoading] = useState(true);
-  const [editMode, setEditMode] = useState(false);
+  const [isDownloadingSchedule, setIsDownloadingSchedule] = useState(false);
+  const [isDownloadingReceipt, setIsDownloadingReceipt] = useState<number|null>(null);
 
-  // Editable fields
-  const [amount, setAmount] = useState(0);
-  const [emi, setEmi] = useState(0);
-  const [tenure, setTenure] = useState(0);
-  const [disbursalDateString, setDisbursalDateString] = useState('');
-  const [selectedDate, setSelectedDate] = useState<Date|undefined>(undefined);
+  // ✏️ Edit dialog state
+  const [editOpen, setEditOpen] = useState(false);
+  const [editAmount, setEditAmount] = useState(0);
+  const [editTenure, setEditTenure] = useState(0);
+  const [editInterestRate, setEditInterestRate] = useState(0);
+  const [editDisbursalDate, setEditDisbursalDate] = useState(format(new Date(), 'yyyy-MM-dd'));
 
-  // Load loan data from Firestore directly
+  // Load loan data
   useEffect(() => {
-    async function loadLoan() {
-      if (!loanId) return setLoading(false);
+    if (!loanId) return;
+    (async() => {
+      setLoading(true);
       try {
-        const docRef = doc(db, 'loans', loanId);
-        const snap = await getDoc(docRef);
+        const ref = doc(db, "loans", loanId);
+        const snap = await getDoc(ref);
         if (snap.exists()) {
-          const ld = snap.data() as Loan;
+          const ld = { id: snap.id, ...snap.data() } as Loan;
           setLoan(ld);
-        } else toast({ variant: 'destructive', title: 'Not Found', description: 'Loan not found.' });
+          setEditAmount(ld.amount);
+          setEditTenure(ld.tenure);
+          setEditInterestRate(ld.interestRate);
+          setEditDisbursalDate(ld.disbursalDate || format(new Date(), 'yyyy-MM-dd'));
+        } else {
+          toast({ variant: "destructive", title: "Not Found", description: "Loan not found!" });
+        }
       } catch (err) {
-        toast({ variant: 'destructive', title: 'Error', description: 'Could not fetch loan.' });
-      } finally { setLoading(false); }
+        console.error(err);
+        toast({ variant: "destructive", title: "Load Failed", description: "Could not load loan." });
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [loanId, toast]);
+
+  // EMI schedule generator
+  const detailedRepaymentSchedule = useMemo(() => {
+    if (!loan) return [];
+    const monthlyRate = loan.interestRate / 12 / 100;
+    let bal = loan.amount;
+    const arr = [];
+    const first = startOfMonth(addMonths(parseISO(loan.disbursalDate!), 1));
+    for(let i=0;i<loan.tenure;i++){
+      const interest = bal * monthlyRate;
+      const principal = loan.emi - interest;
+      bal -= principal;
+      arr.push({ month: i+1, dueDate: format(addMonths(first, i), 'yyyy-MM-dd'), totalPayment: loan.emi, principal, interest, balance: bal < 0 ? 0 : bal, status: 'Pending', paymentDate:'', remark:'---', receiptDownloadable: false });
     }
-    loadLoan();
-  }, [loanId]);
+    return arr;
+  }, [loan]);
 
-  // Prepare edit form defaults when entering edit mode
-  useEffect(() => {
-    if (editMode && loan) {
-      setAmount(loan.amount);
-      setEmi(loan.emi);
-      setTenure(loan.tenure);
-      if (loan.disbursalDate) {
-        const d = parse(loan.disbursalDate, 'yyyy-MM-dd', new Date());
-        setSelectedDate(d);
-        setDisbursalDateString(format(d, 'dd/MM/yyyy'));
-      } else setDisbursalDateString('');
-    }
-  }, [editMode, loan]);
-
-  const handleSave = async () => {
-    if (!loan || !selectedDate) return;
-    if (!amount || !emi || !tenure) return toast({ variant: 'destructive', title: 'Validation', description: 'All fields are required.' });
-    if (!isValid(selectedDate)) return toast({ variant: 'destructive', title: 'Date invalid', description: 'Please provide valid date.' });
-
+  // 🔁 Update loan & schedule
+  const handleUpdateLoan = async () => {
+    if (!loan) return;
     try {
-      const docRef = doc(db, 'loans', loan.id);
-      const firstDate = startOfMonth(addMonths(selectedDate, 1));
-      const schedule = Array.from({ length: tenure }).map((_, i) => ({
-        emiNumber: i + 1,
-        dueDate: format(addMonths(firstDate, i), 'yyyy-MM-dd'),
-        amount: emi,
-        status: 'Pending'
-      }));
-      // update Firestore
-      await updateDoc(docRef, {
-        amount, emi, tenure,
-        disbursalDate: format(selectedDate, 'yyyy-MM-dd'),
+      const monthlyRate = editInterestRate/12/100;
+      const emiCalc = Math.round(
+        (editAmount * monthlyRate * Math.pow(1+monthlyRate, editTenure))/
+        (Math.pow(1+monthlyRate, editTenure)-1)
+      );
+      const schedule = [];
+      let bal = editAmount;
+      const first = startOfMonth(addMonths(parseISO(editDisbursalDate),1));
+      for(let i=0;i<editTenure;i++){
+        const interest = bal * monthlyRate;
+        const principal = emiCalc - interest;
+        bal -= principal;
+        schedule.push({
+          emiNumber: i+1,
+          dueDate: format(addMonths(first, i), 'yyyy-MM-dd'),
+          amount: emiCalc,
+          status: 'Pending'
+        });
+      }
+      const updated = {
+        amount: editAmount,
+        tenure: editTenure,
+        interestRate: editInterestRate,
+        emi: emiCalc,
+        disbursalDate: editDisbursalDate,
         repaymentSchedule: schedule
-      });
-      setLoan({ ...loan, amount, emi, tenure, disbursalDate: format(selectedDate,'yyyy-MM-dd'), repaymentSchedule: schedule });
-      toast({ title: 'Loan Updated', description: 'Changes saved successfully.' });
-      setEditMode(false);
+      };
+      await updateDoc(doc(db,"loans",loan.id), updated);
+      setLoan(prev => prev?{...prev,...updated} : prev);
+      toast({ title:"Loan Updated", description:"Loan details updated successfully." });
+      setEditOpen(false);
     } catch (err) {
       console.error(err);
-      toast({ variant: 'destructive', title: 'Update failed', description: 'Could not save changes.' });
+      toast({variant:"destructive", title:"Update Failed", description:"Could not update loan."});
     }
   };
 
-  // ... rest of your code: schedule memo, PDF, print UI etc.
-
-  if (loading) return <div className="flex justify-center"><Loader2 className="animate-spin"/></div>;
+  if (loading) return <Loader2 className="mx-auto animate-spin h-8 w-8"/>;
   if (!loan) return (
-    <Card><CardContent>
-      <Button onClick={() => router.push('/loans')}><ArrowLeft/> Back</Button>
-    </CardContent></Card>
+    <div>Loan not found. <Button onClick={()=>router.back()}>Back</Button></div>
   );
 
   return (
-    <>
-      {/* Header with Edit Button */}
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <Button variant="outline" onClick={() => router.back()}><ArrowLeft/> Back</Button>
-        <h1>Loan Details</h1>
-        <Dialog open={editMode} onOpenChange={setEditMode}>
-          <DialogTrigger asChild><Button>✏️ Edit</Button></DialogTrigger>
-          <DialogContent>
-            <DialogHeader><DialogTitle>Edit Loan</DialogTitle></DialogHeader>
-            <div className="space-y-3">
-              <Label>Amount</Label>
-              <Input type="number" value={amount} onChange={e => setAmount(+e.target.value)} />
-              <Label>EMI</Label>
-              <Input type="number" value={emi} onChange={e => setEmi(+e.target.value)} />
-              <Label>Duration (Months)</Label>
-              <Input type="number" value={tenure} onChange={e => setTenure(+e.target.value)} />
-              <Label>Disbursal Date</Label>
-              <Input value={disbursalDateString} onChange={e => setDisbursalDateString(e.target.value)} />
-            </div>
-            <DialogFooter>
-              <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-              <Button onClick={handleSave}>Save Changes</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <Button onClick={()=>router.back()} variant="outline"><ArrowLeft/> Back</Button>
+        <Button onClick={()=>setEditOpen(true)}>✏️ Edit Loan</Button>
       </div>
 
-      {/* Existing Loan Details Card */}
-      <Card className="mt-4">
-        {/* ... same UI as before */}
-        <CardContent>
-          {/* Show Disbursal Date, Amount, EMI, Duration */}
-          <div className="grid grid-cols-2 gap-4">
-            <div><strong>Disbursed On:</strong> {loan.disbursalDate || 'N/A'}</div>
-            <div><strong>Amount:</strong> ₹{loan.amount}</div>
-            <div><strong>EMI:</strong> ₹{loan.emi}</div>
-            <div><strong>Duration:</strong> {loan.tenure} months</div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Details Card */}
+      <Card>...</Card>
+      {/* Schedule & Receipts Card */}
+      <Card>...</Card>
 
-      {/* Payment schedule */}
-      {/* Use your existing table and schedule logic here */}
-    </>
+      {/* ✏️ Edit Loan Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Edit Loan</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>Amount</Label>
+              <Input value={editAmount} type="number" onChange={e=>setEditAmount(Number(e.target.value))}/>
+            </div>
+            <div>
+              <Label>Tenure (months)</Label>
+              <Input value={editTenure} type="number" onChange={e=>setEditTenure(Number(e.target.value))}/>
+            </div>
+            <div>
+              <Label>Interest Rate (%)</Label>
+              <Input value={editInterestRate} type="number" onChange={e=>setEditInterestRate(Number(e.target.value))}/>
+            </div>
+            <div>
+              <Label>Disbursal Date</Label>
+              <Input placeholder="yyyy-mm-dd" value={editDisbursalDate} onChange={e=>setEditDisbursalDate(e.target.value)}/>
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+            <Button onClick={handleUpdateLoan}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
