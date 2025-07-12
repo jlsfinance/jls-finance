@@ -43,6 +43,7 @@ import {
   ListChecks,
   Receipt,
   UserCog,
+  Loader2,
 } from "lucide-react";
 
 import { FloatingActionButton } from "./FloatingActionButton";
@@ -76,26 +77,47 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  
+  // Loading state
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="animate-spin h-8 w-8" />
+        <span className="ml-2">Loading...</span>
+      </div>
+    );
+  }
+  
+  // Redirect if not authenticated
+  if (!user) {
+    router.push('/login');
+    return null;
+  }
   
   const handleLogout = async () => {
     try {
       await signOut(auth);
       toast({
-          title: "Logged Out",
-          description: "You have been successfully logged out.",
+        title: "Logged Out",
+        description: "You have been successfully logged out.",
       });
       router.push('/login');
     } catch (error) {
-       toast({
-          variant: "destructive",
-          title: "Logout Failed",
-          description: "An error occurred while logging out.",
+      console.error('Logout error:', error);
+      toast({
+        variant: "destructive",
+        title: "Logout Failed",
+        description: "An error occurred while logging out.",
       });
     }
   };
   
-  const menuItems = allMenuItems.filter(item => user && item.roles.includes(user.role));
+  // Filter menu items based on user role
+  const menuItems = allMenuItems.filter(item => {
+    if (!user || !user.role) return false;
+    return item.roles.includes(user.role);
+  });
 
   return (
     <SidebarProvider>
@@ -116,7 +138,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             {menuItems.map((item) => (
               <SidebarMenuItem key={item.href}>
                 <SidebarMenuButton
-                  isActive={pathname.startsWith(item.href) && (item.href !== '/dashboard' || pathname === '/dashboard')}
+                  isActive={
+                    pathname === item.href || 
+                    (item.href !== '/dashboard' && pathname.startsWith(item.href))
+                  }
                   tooltip={item.label}
                   asChild
                 >
@@ -130,14 +155,21 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </SidebarMenu>
         </SidebarContent>
         <SidebarFooter>
-           <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton tooltip="Logout" onClick={handleLogout}>
-                  <LogOut />
-                  <span>Logout</span>
-                </SidebarMenuButton>
-             </SidebarMenuItem>
-           </SidebarMenu>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton tooltip="Logout" onClick={handleLogout}>
+                <LogOut />
+                <span>Logout</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+          
+          {/* Made with Love Footer */}
+          <div className="px-4 py-3 mt-auto border-t border-sidebar-border">
+            <p className="text-xs text-center text-muted-foreground group-data-[collapsible=icon]:hidden">
+              made with ❤️ by <span className="font-semibold text-primary">luvi</span>
+            </p>
+          </div>
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
@@ -155,7 +187,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                   <AvatarImage
                     src="https://placehold.co/40x40.png"
                     alt={user?.name || 'User'}
-                    data-ai-hint="user avatar"
                   />
                   <AvatarFallback>
                     {user?.name?.split(' ').map(n => n[0]).join('') || 'U'}
@@ -164,14 +195,21 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>{user?.name || 'My Account'}</DropdownMenuLabel>
+              <DropdownMenuLabel>
+                {user?.name || 'My Account'}
+                <div className="text-xs text-muted-foreground">
+                  {user?.role}
+                </div>
+              </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem>Profile</DropdownMenuItem>
               <DropdownMenuItem onClick={handleLogout}>Logout</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </header>
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-background">{children}</main>
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-background">
+          {children}
+        </main>
         {pathname === "/dashboard" && <FloatingActionButton />}
       </SidebarInset>
     </SidebarProvider>
