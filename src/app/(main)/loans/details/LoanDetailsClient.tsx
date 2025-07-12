@@ -1,17 +1,23 @@
 "use client"
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Download, Printer, Loader2 } from 'lucide-react';
-import { useToast } from "@/hooks/use-toast";
+import { useRouter, useSearchParams } from 'next/navigation';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { useToast } from '@/hooks/use-toast';
+
+import {
+  Card, CardContent, CardHeader, CardTitle, CardDescription,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Button, Badge, Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogFooter, DialogClose, Input, Label
+} from '@/components/ui';
+
+import { ArrowLeft, Download, Printer, Pencil, Loader2 } from 'lucide-react';
+import { format, parseISO, addMonths, startOfMonth } from 'date-fns';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-// Interfaces for type safety
 interface Emi {
   emiNumber: number;
   dueDate: string;
@@ -19,7 +25,6 @@ interface Emi {
   status: 'Paid' | 'Pending';
   paymentDate?: string;
   paymentMethod?: string;
-  amountPaid?: number;
 }
 
 interface Loan {
@@ -29,341 +34,223 @@ interface Loan {
   amount: number;
   tenure: number;
   interestRate: number;
-  processingFee: number;
   emi: number;
-  date: string; // Applied date
-  status: 'Pending' | 'Approved' | 'Disbursed' | 'Rejected' | 'Completed';
-  approvalDate?: string;
-  disbursalDate?: string;
+  processingFee: number;
+  disbursalDate: string;
+  notes?: string;
+  status: 'Pending' | 'Approved' | 'Disbursed' | 'Completed' | 'Rejected';
   repaymentSchedule: Emi[];
 }
 
 export default function LoanDetailsClient() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const loanId = searchParams.get('id');
+  const params = useSearchParams();
+  const loanId = params.get('id');
   const { toast } = useToast();
-  
+
   const [loan, setLoan] = useState<Loan | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isPrinting, setIsPrinting] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
+  const [editFields, setEditFields] = useState({
+    customerName: '',
+    amount: 0,
+    tenure: 0,
+    interestRate: 0,
+    disbursalDate: '',
+    notes: ''
+  });
+
+  // Load loan from Firestore
   useEffect(() => {
-    if (loanId) {
+    const load = async () => {
+      if (!loanId) return setLoading(false);
       try {
-        const storedLoans = localStorage.getItem('loanApplications');
-        if (storedLoans) {
-          const allLoans = JSON.parse(storedLoans);
-          const foundLoan = allLoans.find((l: Loan) => l.id === loanId);
-          if (foundLoan) {
-             // Check if all EMIs are paid
-            const allPaid = foundLoan.repaymentSchedule?.every((emi: Emi) => emi.status === 'Paid');
-            if (allPaid && foundLoan.status !== 'Completed') {
-              foundLoan.status = 'Completed';
-            }
-            setLoan(foundLoan);
-          }
+        const docSnap = await getDoc(doc(db, 'loans', loanId));
+        if (!docSnap.exists()) {
+          toast({ variant: 'destructive', title: 'Not found', description: 'Loan not found' });
+          return;
         }
-      } catch (error) {
-        console.error("Failed to load loan data:", error);
-        toast({
-          variant: "destructive",
-          title: "Load Failed",
-          description: "Could not load loan details.",
+        const data = docSnap.data() as any;
+        const fetched: Loan = { id: docSnap.id, ...data };
+        const allPaid = fetched.repaymentSchedule.every(e => e.status === 'Paid');
+        if (allPaid && fetched.status !== 'Completed') fetched.status = 'Completed';
+        setLoan(fetched);
+
+        setEditFields({
+          customerName: fetched.customerName,
+          amount: fetched.amount,
+          tenure: fetched.tenure,
+          interestRate: fetched.interestRate,
+          disbursalDate: fetched.disbursalDate,
+          notes: fetched.notes ?? ''
         });
+      } catch (e) {
+        console.error(e);
+        toast({ variant: 'destructive', title: 'Error', description: 'Error loading loan' });
       } finally {
         setLoading(false);
       }
-    } else {
-        setLoading(false);
-    }
+    };
+    load();
   }, [loanId, toast]);
-
-  const paidEmisCount = loan?.repaymentSchedule?.filter(e => e.status === 'Paid').length || 0;
-  const dueEmisCount = (loan?.tenure || 0) - paidEmisCount;
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 0 }).format(value);
-  };
-  
-  const getStatusBadge = (status: string) => {
-      switch (status) {
-          case 'Approved': return <Badge variant="secondary">{status}</Badge>;
-          case 'Disbursed': return <Badge className="bg-blue-500 text-white hover:bg-blue-500/90">Active</Badge>;
-          case 'Completed': return <Badge className="bg-accent text-accent-foreground">{status}</Badge>;
-          case 'Rejected': return <Badge variant="destructive">{status}</Badge>;
-          case 'Overdue': return <Badge variant="destructive">Overdue</Badge>;
-          default: return <Badge variant="outline">{status}</Badge>;
-      }
-  };
 
   const detailedRepaymentSchedule = useMemo(() => {
     if (!loan) return [];
-    
-    const { amount, interestRate, tenure, emi, repaymentSchedule } = loan;
-    if (!emi || !amount || !interestRate || !tenure || !repaymentSchedule) return [];
-
-    let balance = amount;
-    const schedule = [];
-    const monthlyInterestRate = interestRate / 12 / 100;
-
-    for (let i = 1; i <= tenure; i++) {
-      const interestPayment = balance * monthlyInterestRate;
-      const principalPayment = emi - interestPayment;
-      balance -= principalPayment;
-      
-      const existingEmi = repaymentSchedule.find((e: any) => e.emiNumber === i);
-
-      schedule.push({
-        month: i,
-        dueDate: existingEmi?.dueDate || 'N/A',
-        principal: principalPayment,
-        interest: interestPayment,
-        totalPayment: emi,
-        balance: balance > 0 ? balance : 0,
-        status: existingEmi?.status || 'Pending',
-        paymentDate: existingEmi?.paymentDate || '---',
-        remark: '---', // Placeholder
-        receiptDownloadable: existingEmi?.status === 'Paid'
-      });
-    }
-    return schedule;
+    const mrate = loan.interestRate / 12 / 100;
+    let balance = loan.amount;
+    return Array.from({ length: loan.tenure }, (_, i) => {
+      const int = balance * mrate;
+      const principle = loan.emi - int;
+      balance -= principle;
+      const emiObj = loan.repaymentSchedule.find(e => e.emiNumber === i + 1);
+      return {
+        month: i + 1,
+        dueDate: emiObj?.dueDate ?? format(addMonths(startOfMonth(parseISO(loan.disbursalDate)), i + 1), 'yyyy-MM-dd'),
+        principal: principle,
+        interest: int,
+        totalPayment: loan.emi,
+        balance: balance < 0 ? 0 : balance,
+        status: emiObj?.status ?? 'Pending',
+        paymentDate: emiObj?.paymentDate ?? '---',
+        remark: emiObj?.status === 'Paid' ? '––' : '---',
+        receiptDownloadable: emiObj?.status === 'Paid'
+      };
+    });
   }, [loan]);
 
-  const handlePrintSchedule = async () => {
+  // Update loan & schedule
+  const handleUpdate = async () => {
     if (!loan) return;
-    setIsPrinting(true);
-    try {
-        const doc = new jsPDF();
-
-        // Header
-        doc.setFontSize(16);
-        doc.setFont("helvetica", "bold");
-        doc.text('JLS FINANCE LTD', doc.internal.pageSize.getWidth() / 2, 15, { align: 'center' });
-
-        doc.setFontSize(14);
-        doc.setFont("helvetica", "normal");
-        doc.text('Loan Repayment Schedule', doc.internal.pageSize.getWidth() / 2, 25, { align: 'center' });
-        
-        doc.setFontSize(10);
-        doc.text(`Customer: ${loan.customerName}`, 15, 35);
-        doc.text(`Loan ID: ${loan.id}`, 15, 42);
-
-        const tableColumn = ["EMI No.", "Due Date", "Principal", "Interest", "Total EMI", "Balance After", "Paid Date", "Status", "Remark"];
-        const tableRows: (string | number)[][] = [];
-
-        detailedRepaymentSchedule.forEach(emi => {
-            const emiData = [
-                `${emi.month}/${loan.tenure}`,
-                emi.dueDate,
-                formatCurrency(emi.principal),
-                formatCurrency(emi.interest),
-                formatCurrency(emi.totalPayment),
-                formatCurrency(emi.balance),
-                emi.paymentDate,
-                emi.status,
-                emi.remark
-            ];
-            tableRows.push(emiData);
-        });
-
-        autoTable(doc, {
-            head: [tableColumn],
-            body: tableRows,
-            startY: 55,
-            theme: 'grid',
-            headStyles: { fillColor: [46, 154, 254] },
-            styles: { font: "helvetica", fontSize: 8 },
-        });
-        
-        doc.save(`Payment_Schedule_${loan.id}.pdf`);
-        toast({ title: "Schedule Downloaded!", description: "The payment schedule has been saved as a PDF." });
-
-    } catch (error) {
-        console.error("Failed to generate PDF:", error);
-        toast({ variant: "destructive", title: "Download Failed", description: "An error occurred while generating the PDF." });
-    } finally {
-        setIsPrinting(false);
+    const { amount, tenure, interestRate, customerName, disbursalDate, notes } = editFields;
+    if (amount < 0 || tenure < 1 || interestRate < 0) {
+      return toast({ variant: 'destructive', title: 'Invalid input', description: 'Please correct the fields.' });
     }
+
+    const mrate = interestRate / 12 / 100;
+    const emiCalculated = Math.round(
+      (amount * mrate * Math.pow(1 + mrate, tenure)) /
+      (Math.pow(1 + mrate, tenure) - 1)
+    );
+
+    let bal = amount;
+    const first = startOfMonth(addMonths(parseISO(disbursalDate), 1));
+    const schedule: Emi[] = [];
+    for (let i = 0; i < tenure; i++) {
+      const interest = bal * mrate;
+      const principle = emiCalculated - interest;
+      bal -= principle;
+      schedule.push({ emiNumber: i + 1, dueDate: format(addMonths(first, i), 'yyyy-MM-dd'), amount: emiCalculated, status: 'Pending' });
+    }
+
+    const upd = {
+      customerName,
+      amount,
+      tenure,
+      interestRate,
+      emi: emiCalculated,
+      disbursalDate,
+      notes,
+      repaymentSchedule: schedule
+    };
+
+    await updateDoc(doc(db, 'loans', loan.id), upd);
+    setLoan(prev => prev ? { ...prev, ...upd } as Loan : prev);
+    toast({ title: 'Updated', description: 'Loan data updated.' });
+    setEditOpen(false);
   };
 
-
-  const handleDownloadReceipt = (emi: any) => {
-      if (!loan) return;
-      const doc = new jsPDF();
-      let y = 15;
-
-      doc.setFontSize(16);
-      doc.setFont("helvetica", "bold");
-      doc.text("JLS FINANCE LTD", 105, y, { align: 'center' });
-      y += 10;
-
-      doc.setFontSize(14);
-      doc.setFont("helvetica", "normal");
-      doc.text("Payment Receipt", 105, y, { align: 'center' });
-      y += 15;
-
-      doc.setFontSize(11);
-      doc.setFont("helvetica", "normal");
-      doc.text(`Receipt ID: RCPT-${loan.id}-${emi.month}`, 14, y);
-      y += 7;
-      doc.text(`Payment Date: ${emi.paymentDate || 'N/A'}`, 14, y);
-      y += 8;
-
-      doc.line(14, y, 196, y); // separator
-      y += 10;
-
-      doc.text(`Customer Name: ${loan.customerName}`, 14, y);
-      y += 7;
-      doc.text(`Loan ID: ${loan.id}`, 14, y);
-      y += 8;
-
-      doc.line(14, y, 196, y); // separator
-      y += 7;
-
-      doc.setFont("helvetica", "bold");
-      doc.text("Description", 14, y);
-      doc.text("Amount", 180, y, { align: 'right' });
-      y += 8;
-      doc.setFont("helvetica", "normal");
-      doc.text(`EMI Payment (No. ${emi.month}/${loan.tenure})`, 14, y);
-      doc.text(formatCurrency(loan.emi), 180, y, { align: 'right' });
-      y += 10;
-
-      doc.line(14, y, 196, y);
-      y += 7;
-      
-      doc.setFont("helvetica", "bold");
-      doc.text("Total Paid:", 130, y);
-      doc.text(formatCurrency(loan.emi), 180, y, { align: 'right' });
-      y += 13;
-
-      doc.text(`Payment Method: ${loan.repaymentSchedule.find(e => e.emiNumber === emi.month)?.paymentMethod || 'N/A'}`, 14, y);
-
-      doc.setFontSize(10);
-      doc.text("This is a computer-generated receipt and does not require a signature.", 105, 280, { align: 'center' });
-      
-      doc.save(`Receipt_${loan.id}_EMI_${emi.month}.pdf`);
-      toast({ title: "Receipt Downloaded!" });
-  }
-
-  if (loading) {
-    return <div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>;
-  }
-
-  if (!loan) {
-    return (
-      <Card className="w-full max-w-2xl mx-auto">
-        <CardHeader>
-          <CardTitle>Loan Not Found</CardTitle>
-          <CardDescription>The loan you are trying to access does not exist.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button onClick={() => router.push('/loans')}>
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Loans List
-          </Button>
-        </CardContent>
-      </Card>
-    );
-  }
+  if (loading) return <Loader2 className="animate-spin mx-auto mt-20 h-8 w-8" />;
+  if (!loan) return (
+    <div className="p-10 text-center">
+      <p>No loan found!</p>
+      <Button onClick={() => router.back()}>Go Back</Button>
+    </div>
+  );
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4 no-print">
-         <Button variant="outline" onClick={() => router.back()}>
+      <div className="flex justify-between items-center">
+        <Button variant="outline" onClick={() => router.back()}>
           <ArrowLeft className="mr-2 h-4 w-4" /> Back
         </Button>
-        <h1 className="text-2xl font-headline font-semibold">Loan Details</h1>
-        <div className="flex items-center gap-2">
-            <Button onClick={handlePrintSchedule} disabled={isPrinting} className="bg-accent text-accent-foreground hover:bg-accent/90">
-                {isPrinting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-                Download Schedule
-            </Button>
-            <Button variant="outline" onClick={() => window.print()}>
-                <Printer className="mr-2 h-4 w-4" />
-                Print Page
-            </Button>
-        </div>
+        <Button onClick={() => setEditOpen(true)}>
+          <Pencil className="mr-2 h-4 w-4" /> Edit Loan
+        </Button>
       </div>
-      
-      <div>
-        <Card className="shadow-lg print-container">
-            <CardHeader className="bg-primary/5">
-                <div className="flex justify-between items-start">
-                    <div>
-                        <CardTitle className="text-2xl">{loan.customerName}</CardTitle>
-                        <CardDescription>Loan ID: {loan.id}</CardDescription>
-                    </div>
-                    {getStatusBadge(loan.status)}
-                </div>
-            </CardHeader>
-            <CardContent className="p-6">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-sm">
-                    <div><span className="font-medium text-muted-foreground block">Disbursed On</span>{loan.disbursalDate || 'N/A'}</div>
-                    <div><span className="font-medium text-muted-foreground block">Loan Amount</span>{formatCurrency(loan.amount)}</div>
-                    <div><span className="font-medium text-muted-foreground block">Monthly EMI</span>{formatCurrency(loan.emi)}</div>
-                    <div><span className="font-medium text-muted-foreground block">Duration</span>{loan.tenure} Months</div>
-                    <div><span className="font-medium text-muted-foreground block">EMIs Paid</span>{paidEmisCount} / {loan.tenure}</div>
-                    <div><span className="font-medium text-muted-foreground block">EMIs Due</span>{dueEmisCount}</div>
-                    <div><span className="font-medium text-muted-foreground block">Interest Rate</span>{loan.interestRate}% p.a.</div>
-                    <div><span className="font-medium text-muted-foreground block">Processing Fee</span>{formatCurrency(loan.processingFee)}</div>
-                </div>
-            </CardContent>
-        </Card>
-        
-        <Card className="mt-6 shadow-lg print-container">
-            <CardHeader>
-                <CardTitle>Payment Schedule</CardTitle>
-                <CardDescription>A detailed breakdown of the loan repayment schedule.</CardDescription>
-            </CardHeader>
-            <CardContent id="printable-statement">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>EMI No.</TableHead>
-                            <TableHead>Due Date</TableHead>
-                            <TableHead>Principal</TableHead>
-                            <TableHead>Interest</TableHead>
-                            <TableHead>Total EMI</TableHead>
-                            <TableHead>Balance After</TableHead>
-                            <TableHead>Paid Date</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead>Remark</TableHead>
-                            <TableHead className="text-center no-print">Receipt</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {detailedRepaymentSchedule.length > 0 ? detailedRepaymentSchedule.map((emi) => (
-                            <TableRow key={emi.month}>
-                                <TableCell className="font-medium">{emi.month}/{loan.tenure}</TableCell>
-                                <TableCell>{emi.dueDate}</TableCell>
-                                <TableCell>{formatCurrency(emi.principal)}</TableCell>
-                                <TableCell>{formatCurrency(emi.interest)}</TableCell>
-                                <TableCell>{formatCurrency(emi.totalPayment)}</TableCell>
-                                <TableCell>{formatCurrency(emi.balance)}</TableCell>
-                                <TableCell>{emi.paymentDate}</TableCell>
-                                <TableCell>
-                                  <Badge variant={emi.status === 'Paid' ? 'default' : 'outline'} className={emi.status === 'Paid' ? 'bg-accent text-accent-foreground' : ''}>
-                                      {emi.status}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell>{emi.remark}</TableCell>
-                                <TableCell className="text-center no-print">
-                                    {emi.receiptDownloadable ? (
-                                        <Button variant="link" size="sm" onClick={() => handleDownloadReceipt(emi)}>
-                                            <Download className="h-4 w-4" />
-                                        </Button>
-                                    ) : '-'}
-                                </TableCell>
-                            </TableRow>
-                        )) : (
-                            <TableRow><TableCell colSpan={10} className="h-24 text-center">No repayment schedule found.</TableCell></TableRow>
-                        )}
-                    </TableBody>
-                </Table>
-            </CardContent>
-        </Card>
-      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{loan.customerName}</CardTitle>
+          <CardDescription>Loan ID: {loan.id}</CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+          <div><strong>Amount:</strong> ₹{loan.amount}</div>
+          <div><strong>EMI:</strong> ₹{loan.emi}</div>
+          <div><strong>Interest Rate:</strong> {loan.interestRate}%</div>
+          <div><strong>Tenure:</strong> {loan.tenure} months</div>
+          <div><strong>Disbursal Date:</strong> {loan.disbursalDate}</div>
+          <div><strong>Status:</strong> <Badge>{loan.status}</Badge></div>
+          <div className="col-span-2"><strong>Notes:</strong> {loan.notes ?? '—'}</div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>Repayment Schedule</CardTitle></CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>EMI #</TableHead>
+                <TableHead>Due Date</TableHead>
+                <TableHead>Principal</TableHead>
+                <TableHead>Interest</TableHead>
+                <TableHead>Total Payment</TableHead>
+                <TableHead>Balance</TableHead>
+                <TableHead>Paid Date</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {detailedRepaymentSchedule.map(r => (
+                <TableRow key={r.month}>
+                  <TableCell>{r.month}/{loan.tenure}</TableCell>
+                  <TableCell>{r.dueDate}</TableCell>
+                  <TableCell>₹{r.principal.toFixed(2)}</TableCell>
+                  <TableCell>₹{r.interest.toFixed(2)}</TableCell>
+                  <TableCell>₹{r.totalPayment.toFixed(2)}</TableCell>
+                  <TableCell>₹{r.balance.toFixed(2)}</TableCell>
+                  <TableCell>{r.paymentDate}</TableCell>
+                  <TableCell><Badge variant={r.status === 'Paid' ? 'default' : 'outline'}>{r.status}</Badge></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* ——— Edit Dialog ——— */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Edit Loan</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-4">
+            {(['customerName','amount','tenure','interestRate','disbursalDate','notes'] as const).map(field => (
+              <div key={field}>
+                <Label>{field.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}</Label>
+                <Input
+                  type={field === 'disbursalDate' ? 'date' : field === 'amount' || field === 'tenure' || field === 'interestRate' ? 'number' : 'text'}
+                  value={editFields[field] as any}
+                  onChange={e => setEditFields(prev => ({ ...prev, [field]: field !== 'notes' ? e.target.value : e.target.value }))}
+                />
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+            <Button onClick={handleUpdate}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
-  )
+  );
 }
