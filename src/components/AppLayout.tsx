@@ -1,4 +1,3 @@
-
 "use client";
 
 import React from "react";
@@ -130,15 +129,18 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             ))}
           </SidebarMenu>
         </SidebarContent>
-        <SidebarFooter>
-           <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton tooltip="Logout" onClick={handleLogout}>
-                  <LogOut />
-                  <span>Logout</span>
-                </SidebarMenuButton>
-             </SidebarMenuItem>
-           </SidebarMenu>
+        <SidebarFooter className="flex flex-col">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton tooltip="Logout" onClick={handleLogout}>
+                <LogOut />
+                <span>Logout</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+          <div className="p-2 text-center text-xs text-muted-foreground">
+            Made with ❤️ by luvi
+          </div>
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
