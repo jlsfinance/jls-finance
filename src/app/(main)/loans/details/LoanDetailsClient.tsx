@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -13,10 +13,8 @@ import {
   DialogFooter, DialogClose, Input, Label
 } from '@/components/ui';
 
-import { ArrowLeft, Download, Printer, Pencil, Loader2 } from 'lucide-react';
+import { ArrowLeft, Pencil, Loader2 } from 'lucide-react';
 import { format, parseISO, addMonths, startOfMonth } from 'date-fns';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 
 interface Emi {
   emiNumber: number;
@@ -101,29 +99,28 @@ export default function LoanDetailsClient() {
     let balance = loan.amount;
     return Array.from({ length: loan.tenure }, (_, i) => {
       const int = balance * mrate;
-      const principle = loan.emi - int;
-      balance -= principle;
+      const principal = loan.emi - int;
+      balance -= principal;
       const emiObj = loan.repaymentSchedule.find(e => e.emiNumber === i + 1);
       return {
         month: i + 1,
         dueDate: emiObj?.dueDate ?? format(addMonths(startOfMonth(parseISO(loan.disbursalDate)), i + 1), 'yyyy-MM-dd'),
-        principal: principle,
+        principal,
         interest: int,
         totalPayment: loan.emi,
         balance: balance < 0 ? 0 : balance,
         status: emiObj?.status ?? 'Pending',
-        paymentDate: emiObj?.paymentDate ?? '---',
-        remark: emiObj?.status === 'Paid' ? '––' : '---',
-        receiptDownloadable: emiObj?.status === 'Paid'
+        paymentDate: emiObj?.paymentDate ?? '—',
       };
     });
   }, [loan]);
 
-  // Update loan & schedule
   const handleUpdate = async () => {
     if (!loan) return;
+
     const { amount, tenure, interestRate, customerName, disbursalDate, notes } = editFields;
-    if (amount < 0 || tenure < 1 || interestRate < 0) {
+
+    if (amount <= 0 || tenure < 1 || interestRate < 0) {
       return toast({ variant: 'destructive', title: 'Invalid input', description: 'Please correct the fields.' });
     }
 
@@ -136,11 +133,17 @@ export default function LoanDetailsClient() {
     let bal = amount;
     const first = startOfMonth(addMonths(parseISO(disbursalDate), 1));
     const schedule: Emi[] = [];
+
     for (let i = 0; i < tenure; i++) {
       const interest = bal * mrate;
-      const principle = emiCalculated - interest;
-      bal -= principle;
-      schedule.push({ emiNumber: i + 1, dueDate: format(addMonths(first, i), 'yyyy-MM-dd'), amount: emiCalculated, status: 'Pending' });
+      const principal = emiCalculated - interest;
+      bal -= principal;
+      schedule.push({
+        emiNumber: i + 1,
+        dueDate: format(addMonths(first, i), 'yyyy-MM-dd'),
+        amount: emiCalculated,
+        status: 'Pending'
+      });
     }
 
     const upd = {
@@ -155,7 +158,8 @@ export default function LoanDetailsClient() {
     };
 
     await updateDoc(doc(db, 'loans', loan.id), upd);
-    setLoan(prev => prev ? { ...prev, ...upd } as Loan : prev);
+
+    setLoan(prev => prev ? { ...prev, ...upd, repaymentSchedule: schedule } : prev);
     toast({ title: 'Updated', description: 'Loan data updated.' });
     setEditOpen(false);
   };
@@ -205,7 +209,7 @@ export default function LoanDetailsClient() {
                 <TableHead>Due Date</TableHead>
                 <TableHead>Principal</TableHead>
                 <TableHead>Interest</TableHead>
-                <TableHead>Total Payment</TableHead>
+                <TableHead>Total</TableHead>
                 <TableHead>Balance</TableHead>
                 <TableHead>Paid Date</TableHead>
                 <TableHead>Status</TableHead>
@@ -229,18 +233,28 @@ export default function LoanDetailsClient() {
         </CardContent>
       </Card>
 
-      {/* ——— Edit Dialog ——— */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>Edit Loan</DialogTitle></DialogHeader>
           <div className="space-y-4 py-4">
-            {(['customerName','amount','tenure','interestRate','disbursalDate','notes'] as const).map(field => (
+            {(['customerName', 'amount', 'tenure', 'interestRate', 'disbursalDate', 'notes'] as const).map(field => (
               <div key={field}>
                 <Label>{field.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}</Label>
                 <Input
-                  type={field === 'disbursalDate' ? 'date' : field === 'amount' || field === 'tenure' || field === 'interestRate' ? 'number' : 'text'}
+                  type={
+                    field === 'disbursalDate' ? 'date'
+                      : field === 'amount' || field === 'tenure' || field === 'interestRate' ? 'number'
+                      : 'text'
+                  }
                   value={editFields[field] as any}
-                  onChange={e => setEditFields(prev => ({ ...prev, [field]: field !== 'notes' ? e.target.value : e.target.value }))}
+                  onChange={e =>
+                    setEditFields(prev => ({
+                      ...prev,
+                      [field]: field === 'amount' || field === 'tenure' || field === 'interestRate'
+                        ? Number(e.target.value)
+                        : e.target.value
+                    }))
+                  }
                 />
               </div>
             ))}
