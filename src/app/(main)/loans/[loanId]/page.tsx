@@ -53,6 +53,7 @@ export default function LoanDetailsPage() {
   const [isDownloadingSchedule, setIsDownloadingSchedule] = useState(false);
   const [isDownloadingReceipt, setIsDownloadingReceipt] = useState<number | null>(null);
 
+  
   useEffect(() => {
     if (loanId) {
       const fetchLoan = async () => {
