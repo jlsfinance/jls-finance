@@ -361,8 +361,8 @@ export default function LoanDetailsPage() {
                 <Printer className="mr-2 h-4 w-4" />
                 Print Page
             </Button>
-             <Button variant="outline">                
-                Edit Loan Details
+            <Button variant="outline" className="bg-red-100">
+              Edit Loan Details
             </Button>
         </div>
       </div>
