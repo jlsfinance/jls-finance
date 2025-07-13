@@ -362,7 +362,7 @@ export default function LoanDetailsPage() {
                 Print Page
             </Button>
              <Button variant="outline">                
-                {/* Edit Loan Details */}
+                Edit Loan Details
             </Button>
         </div>
       </div>
