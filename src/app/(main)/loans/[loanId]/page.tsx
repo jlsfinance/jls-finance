@@ -346,26 +346,41 @@ export default function LoanDetailsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4 no-print">
-         <Button variant="outline" onClick={() => router.back()}>
-          <ArrowLeft className="mr-2 h-4 w-4" /> Back
-        </Button>
-        <h1 className="text-2xl font-headline font-semibold">Loan Details</h1>
-        <div className="flex items-center gap-2">
-            <Button onClick={handleDownloadSchedule} disabled={isDownloadingSchedule || !loan.repaymentSchedule} className="bg-accent text-accent-foreground hover:bg-accent/90">
-                {isDownloadingSchedule ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-                Download Schedule
-            </Button>
-            <Button variant="outline" onClick={() => window.print()}>
-                <Printer className="mr-2 h-4 w-4" />
-                Print Page
-            </Button>
-            <Button variant="outline" className="bg-accent text-accent-foreground hover:bg-accent/90">
-              Edit Loan Details
-            </Button>
-        </div>
-      </div>
+<div className="space-y-6">
+  <div className="flex items-center justify-between flex-wrap gap-4 no-print">
+    <Button variant="outline" onClick={() => router.back()}>
+      <ArrowLeft className="mr-2 h-4 w-4" /> Back
+    </Button>
+
+    <h1 className="text-2xl font-headline font-semibold">Loan Details</h1>
+
+    <div className="flex items-center gap-2">
+      <Button
+        onClick={handleDownloadSchedule}
+        disabled={isDownloadingSchedule || !loan.repaymentSchedule}
+        className="bg-accent text-accent-foreground hover:bg-accent/90"
+      >
+        {isDownloadingSchedule ? (
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        ) : (
+          <Download className="mr-2 h-4 w-4" />
+        )}
+        Download Schedule
+      </Button>
+
+      <Button variant="outline" onClick={() => window.print()}>
+        <Printer className="mr-2 h-4 w-4" />
+        Print Page
+      </Button>
+
+      {/* ✅ NEW Edit Loan Button */}
+      <Button variant="outline" onClick={() => console.log('Edit Loan clicked')}>
+        ✏️ Edit Loan
+      </Button>
+    </div>
+  </div>
+</div>
+
       
       <div>
         <Card className="shadow-lg print-container">
