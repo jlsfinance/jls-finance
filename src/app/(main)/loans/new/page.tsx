@@ -31,9 +31,9 @@ type LoanFormValues = z.infer<typeof loanSchema>;
 
 const DEFAULT_LOAN_VALUES: LoanFormValues = {
   customerId: "",
-  amount: 100000,
-  interestRate: 12,
-  tenure: 12,
+  amount: 50000,
+  interestRate: 38.5,
+  tenure: 24,
   processingFeePercentage: 5,
   notes: "",
 };
