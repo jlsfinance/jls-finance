@@ -1,6 +1,7 @@
 
 "use client"
 
+
 import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { doc, getDoc, updateDoc } from "firebase/firestore";
@@ -53,7 +54,7 @@ export default function LoanDetailsPage() {
   const [isDownloadingSchedule, setIsDownloadingSchedule] = useState(false);
   const [isDownloadingReceipt, setIsDownloadingReceipt] = useState<number | null>(null);
 
-  
+
   useEffect(() => {
     if (loanId) {
       const fetchLoan = async () => {
