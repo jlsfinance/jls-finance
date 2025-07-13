@@ -49,6 +49,7 @@ export default function LoanDetailsPage() {
       setLoading(true);
       try {
         const ref = doc(db, "loans", loanId);
+        console.log("loanId value : " + loanId);
         const snap = await getDoc(ref);
         if (snap.exists()) {
           const ld = { id: snap.id, ...snap.data() } as Loan;
