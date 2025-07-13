@@ -58,10 +58,12 @@ export default function LoanDetailsPage() {
   const [editDisbursalDate, setEditDisbursalDate] = useState(format(new Date(), 'yyyy-MM-dd'));
 
   useEffect(() => {
+    console.log("loan Id : " + loanId);
     if (!loanId || typeof loanId !== 'string') return;
     (async () => {
       setLoading(true);
       try {
+        console.log("loan Id 2 : " + loanId)
         const snap = await getDoc(doc(db, 'loans', loanId));
         if (snap.exists()) {
           const data = snap.data() as Loan;
